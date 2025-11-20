@@ -108,6 +108,16 @@ enum Commands {
         /// Number of replicas
         replicas: u32,
     },
+
+    /// Connect to a service (interactive shell)
+    Connect {
+        /// Service name (kafka, redis, timescaledb)
+        service: String,
+
+        /// Namespace
+        #[arg(short, long, default_value = "llm-analytics-hub")]
+        namespace: String,
+    },
 }
 
 #[tokio::main]
@@ -149,6 +159,9 @@ async fn main() -> Result<()> {
         }
         Commands::Scale { service, replicas } => {
             scale(&service, replicas, cli.dry_run).await?;
+        }
+        Commands::Connect { service, namespace } => {
+            connect(&service, &namespace).await?;
         }
     }
 
@@ -642,6 +655,48 @@ async fn scale(service: &str, replicas: u32, dry_run: bool) -> Result<()> {
     ).await?;
 
     println!("{}", "✅ Scaled successfully!".green());
+    Ok(())
+}
+
+// ========== Connect ==========
+
+async fn connect(service: &str, namespace: &str) -> Result<()> {
+    let (pod, container) = match service.to_lowercase().as_str() {
+        "kafka" => ("kafka-0", None),
+        "redis" => ("redis-master-0", None),
+        "timescaledb" | "postgres" => ("timescaledb-0", None),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown service: {}. Available: kafka, redis, timescaledb",
+                service
+            ));
+        }
+    };
+
+    println!("{}", format!("🔌 Connecting to {} (pod: {})...", service, pod).bold().cyan());
+    println!("{}", format!("   Namespace: {}", namespace).dimmed());
+    println!();
+
+    let mut args = vec!["exec", "-it", "-n", namespace, pod, "--"];
+
+    if let Some(c) = container {
+        args.extend(&["-c", c]);
+    }
+
+    args.push("/bin/bash");
+
+    let status = Command::new("kubectl")
+        .args(&args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .context("Failed to execute kubectl exec")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Connection failed with exit code: {:?}", status.code()));
+    }
+
     Ok(())
 }
 

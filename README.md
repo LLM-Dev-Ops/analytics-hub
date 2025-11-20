@@ -283,6 +283,7 @@ cargo build --release
 # Build CLI tools
 cargo build --release --bin llm-ops
 cargo build --release --bin db-migrate
+cargo build --release --bin kafka-admin
 cargo build --release --bin bench-timescaledb
 cargo build --release --bin bench-redis
 
@@ -305,6 +306,14 @@ llm-ops deploy --provider aws --environment production
 llm-ops validate --target all
 llm-ops health --service all
 llm-ops build --service all --push
+llm-ops connect kafka  # Connect to Kafka pod
+llm-ops connect redis  # Connect to Redis pod
+
+# Kafka administration
+kafka-admin create-topics  # Create all 14 LLM Analytics topics
+kafka-admin list-topics    # List all topics
+kafka-admin verify         # Verify cluster health
+kafka-admin describe llm-events  # Describe topic configuration
 
 # Database migrations
 db-migrate --database-url $DATABASE_URL migrate
@@ -319,6 +328,7 @@ bench-redis --connections 200 --num-operations 200000
 **Documentation**:
 - **[Shell → Rust Conversion](docs/RUST_CONVERSION.md)** - Operations CLI tools
 - **[Python → Rust Benchmarks](docs/PYTHON_TO_RUST_BENCHMARKS.md)** - Load testing tools
+- **[Complete Shell → Rust Plan](docs/SHELL_TO_RUST_COMPLETE.md)** - Comprehensive conversion strategy
 
 #### 2. Start Infrastructure Services
 
@@ -849,10 +859,10 @@ For questions, issues, or feature requests:
 **Last Updated**: 2025-01-20
 
 ### Implementation Metrics
-- **Total Code**: 31,000+ lines across 120+ files
-- **Rust Core**: 3,230+ lines of production analytics code
+- **Total Code**: 32,000+ lines across 123+ files
+- **Rust Core**: 4,030+ lines of production analytics code
 - **Test Coverage**: 90%+ (116+ tests)
-- **Documentation**: 11,350+ lines across 22+ documents
+- **Documentation**: 12,650+ lines across 25+ documents
 - **Microservices**: 7 (5 Rust + 1 TypeScript API + 1 Frontend)
 - **Kubernetes Manifests**: 20+ production-ready files
 - **CI/CD Stages**: 11 automated pipeline stages
@@ -863,10 +873,11 @@ For questions, issues, or feature requests:
 - **Anomaly Detection**: 269 lines (Z-score, baselines, severity classification)
 - **Correlation Engine**: 420 lines (8 correlation types, cross-module analysis)
 - **Aggregation Engine**: 380 lines (multi-window, percentile calculations)
-- **Operations CLI**: 750 lines (deployment, validation, health checks)
+- **Operations CLI**: 750 lines (deployment, validation, health checks, connect)
 - **Database Migration**: 450 lines (version-controlled migrations)
-- **TimescaleDB Benchmark**: 450 lines (10-100x faster than Python) - **NEW** ✨
-- **Redis Benchmark**: 450 lines (10-100x faster than Python) - **NEW** ✨
+- **Kafka Admin**: 800 lines (topic management, health checks) - **NEW** ✨
+- **TimescaleDB Benchmark**: 450 lines (10-100x faster than Python)
+- **Redis Benchmark**: 450 lines (10-100x faster than Python)
 
 ### Commercial Viability
 - ✅ Enterprise-grade code quality

@@ -121,6 +121,10 @@ path = "src/bin/bench-timescaledb.rs"
 name = "bench-redis"
 path = "src/bin/bench-redis.rs"
 
+[[bin]]
+name = "kafka-admin"
+path = "src/bin/kafka-admin.rs"
+
 [[bench]]
 name = "event_processing"
 harness = false
