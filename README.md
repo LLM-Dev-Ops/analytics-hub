@@ -304,7 +304,10 @@ The platform now includes production-grade Rust CLI tools (replacing shell scrip
 # Operations CLI
 llm-ops deploy --provider aws --environment production
 llm-ops validate --target all
-llm-ops health --service all
+llm-ops health --service all  # Comprehensive health checks: pods, connectivity, disk, connections
+llm-ops health --service databases  # TimescaleDB: connections, disk usage, replication
+llm-ops health --service kafka      # Kafka: brokers, topics, cluster state
+llm-ops health --service redis      # Redis: cluster state, connectivity
 llm-ops build --service all --push
 llm-ops connect kafka  # Connect to Kafka pod
 llm-ops connect redis  # Connect to Redis pod

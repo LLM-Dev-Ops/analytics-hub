@@ -467,18 +467,157 @@ async fn check_api_health() -> Result<()> {
 }
 
 async fn check_database_health() -> Result<()> {
-    // Would use actual database connection here
-    println!("{}", "✅ Database: Healthy".green());
+    println!("{}", "=== TimescaleDB Health Check ===".bold());
+
+    // Check pods are running
+    let output = run_command_output("kubectl", &[
+        "get", "pods", "-l", "app=timescaledb",
+        "-n", "llm-analytics-hub",
+        "-o", "jsonpath={.items[*].status.phase}"
+    ]).await?;
+
+    if output.contains("Running") {
+        println!("{}", "  ✅ Pods: Running".green());
+    } else {
+        println!("{}", format!("  ❌ Pods: {}", output).red());
+        return Ok(());
+    }
+
+    // Check database connectivity
+    let pg_ready = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "timescaledb-0",
+        "--", "pg_isready", "-U", "postgres"
+    ]).await;
+
+    match pg_ready {
+        Ok(_) => println!("{}", "  ✅ Database: Accepting connections".green()),
+        Err(_) => println!("{}", "  ❌ Database: Not accepting connections".red()),
+    }
+
+    // Check active connections
+    let conn_output = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "timescaledb-0", "--",
+        "psql", "-U", "postgres", "-t", "-c",
+        "SELECT count(*) FROM pg_stat_activity WHERE state='active';"
+    ]).await;
+
+    if let Ok(count) = conn_output {
+        println!("{}", format!("  📊 Active connections: {}", count.trim()).cyan());
+    }
+
+    // Check disk usage
+    let disk_output = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "timescaledb-0", "--",
+        "df", "-h", "/var/lib/postgresql/data"
+    ]).await;
+
+    if let Ok(disk) = disk_output {
+        let lines: Vec<&str> = disk.lines().collect();
+        if lines.len() > 1 {
+            println!("{}", format!("  💾 Disk usage: {}", lines[1]).cyan());
+        }
+    }
+
     Ok(())
 }
 
 async fn check_kafka_health() -> Result<()> {
-    println!("{}", "✅ Kafka: Healthy".green());
+    println!("{}", "=== Kafka Health Check ===".bold());
+
+    // Check pods are running
+    let output = run_command_output("kubectl", &[
+        "get", "pods", "-l", "app=kafka",
+        "-n", "llm-analytics-hub",
+        "-o", "jsonpath={.items[*].status.phase}"
+    ]).await?;
+
+    let running_count = output.matches("Running").count();
+    if running_count > 0 {
+        println!("{}", format!("  ✅ Pods: {} Running", running_count).green());
+    } else {
+        println!("{}", format!("  ❌ Pods: {}", output).red());
+        return Ok(());
+    }
+
+    // Check broker connectivity (using kafka-admin tool would be better)
+    let broker_check = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "kafka-0", "--",
+        "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"
+    ]).await;
+
+    match broker_check {
+        Ok(_) => println!("{}", "  ✅ Brokers: Responding".green()),
+        Err(_) => println!("{}", "  ❌ Brokers: Not responding".red()),
+    }
+
+    // List topics count
+    let topics = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "kafka-0", "--",
+        "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"
+    ]).await;
+
+    if let Ok(topic_list) = topics {
+        let llm_topics = topic_list.lines().filter(|t| t.starts_with("llm-")).count();
+        println!("{}", format!("  📊 LLM Analytics topics: {}/14", llm_topics).cyan());
+    }
+
     Ok(())
 }
 
 async fn check_redis_health() -> Result<()> {
-    println!("{}", "✅ Redis: Healthy".green());
+    println!("{}", "=== Redis Health Check ===".bold());
+
+    // Check pods are running
+    let output = run_command_output("kubectl", &[
+        "get", "pods", "-l", "app=redis-cluster",
+        "-n", "llm-analytics-hub",
+        "-o", "jsonpath={.items[*].status.phase}"
+    ]).await?;
+
+    let running_count = output.matches("Running").count();
+    if running_count > 0 {
+        println!("{}", format!("  ✅ Pods: {} Running", running_count).green());
+    } else {
+        println!("{}", format!("  ❌ Pods: {}", output).red());
+        return Ok(());
+    }
+
+    // Check Redis connectivity
+    let ping = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "redis-cluster-0", "--",
+        "redis-cli", "ping"
+    ]).await;
+
+    match ping {
+        Ok(response) if response.contains("PONG") => {
+            println!("{}", "  ✅ Redis: Responding to PING".green());
+        }
+        _ => {
+            println!("{}", "  ❌ Redis: Not responding".red());
+        }
+    }
+
+    // Check cluster info
+    let cluster_info = run_command_output("kubectl", &[
+        "exec", "-n", "llm-analytics-hub", "redis-cluster-0", "--",
+        "redis-cli", "cluster", "info"
+    ]).await;
+
+    if let Ok(info) = cluster_info {
+        if info.contains("cluster_state:ok") {
+            println!("{}", "  ✅ Cluster: State OK".green());
+        } else {
+            println!("{}", "  ⚠️  Cluster: Check state".yellow());
+        }
+
+        // Extract cluster size
+        for line in info.lines() {
+            if line.starts_with("cluster_size:") {
+                println!("{}", format!("  📊 {}", line).cyan());
+            }
+        }
+    }
+
     Ok(())
 }
 
