@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: llm-analytics
+  labels:
+    app: api
+data:
+  redis_url: "redis://redis.llm-analytics.svc.cluster.local:6379"
+  kafka_brokers: "kafka.llm-analytics.svc.cluster.local:9092"
+
+  # CORS settings
+  cors_origins: "https://app.llm-analytics.com,https://llm-analytics.com"
+
+  # Rate limiting
+  rate_limit_window_secs: "60"
+  rate_limit_max_requests: "1000"
+
+  # Logging
+  log_level: "info"
+  log_format: "json"

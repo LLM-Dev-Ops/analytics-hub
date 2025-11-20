@@ -1,0 +1,56 @@
+# Prometheus configuration for local development
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'local-dev'
+    environment: 'development'
+
+scrape_configs:
+  # Event Ingestion Service
+  - job_name: 'event-ingestion'
+    static_configs:
+      - targets: ['event-ingestion:9090']
+        labels:
+          service: 'event-ingestion'
+
+  # Metrics Aggregation Service
+  - job_name: 'metrics-aggregation'
+    static_configs:
+      - targets: ['metrics-aggregation:9090']
+        labels:
+          service: 'metrics-aggregation'
+
+  # Correlation Engine
+  - job_name: 'correlation-engine'
+    static_configs:
+      - targets: ['correlation-engine:9090']
+        labels:
+          service: 'correlation-engine'
+
+  # Anomaly Detection
+  - job_name: 'anomaly-detection'
+    static_configs:
+      - targets: ['anomaly-detection:9090']
+        labels:
+          service: 'anomaly-detection'
+
+  # Forecasting Service
+  - job_name: 'forecasting'
+    static_configs:
+      - targets: ['forecasting:9090']
+        labels:
+          service: 'forecasting'
+
+  # API Service
+  - job_name: 'api'
+    static_configs:
+      - targets: ['api:9090']
+        labels:
+          service: 'api'
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

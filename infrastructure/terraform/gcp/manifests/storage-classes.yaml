@@ -1,0 +1,93 @@
+---
+# Standard Persistent Disk
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-standard
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-standard
+  replication-type: none
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+
+---
+# Balanced Persistent Disk (Default)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-balanced
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-balanced
+  replication-type: none
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+
+---
+# SSD Persistent Disk
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-ssd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-ssd
+  replication-type: none
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+
+---
+# Regional SSD Persistent Disk (High Availability)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-ssd-regional
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-ssd
+  replication-type: regional-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+
+---
+# Regional Balanced Persistent Disk (High Availability)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: pd-balanced-regional
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-balanced
+  replication-type: regional-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+
+---
+# Filestore Storage Class (NFS)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: filestore
+provisioner: filestore.csi.storage.gke.io
+parameters:
+  tier: standard
+  network: default
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete

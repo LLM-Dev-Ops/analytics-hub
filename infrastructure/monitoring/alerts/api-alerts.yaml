@@ -1,0 +1,109 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: api-alerts
+  namespace: monitoring
+  labels:
+    app: llm-analytics-hub
+spec:
+  groups:
+    - name: api.rules
+      interval: 30s
+      rules:
+        # High Error Rate
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{status=~"5..",namespace="llm-analytics-hub"}[5m]))
+              /
+              sum(rate(http_requests_total{namespace="llm-analytics-hub"}[5m]))
+            ) * 100 > 5
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "High API error rate detected"
+            description: "API error rate is {{ $value }}% (threshold: 5%)"
+
+        # High Latency
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{namespace="llm-analytics-hub"}[5m])) by (le)
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High API latency detected"
+            description: "API P95 latency is {{ $value }}s (threshold: 0.5s)"
+
+        # Low Throughput
+        - alert: LowThroughput
+          expr: |
+            sum(rate(http_requests_total{namespace="llm-analytics-hub"}[5m])) < 10
+          for: 15m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "Low API throughput"
+            description: "API request rate is {{ $value }} req/s"
+
+        # Pod Down
+        - alert: PodDown
+          expr: |
+            kube_deployment_status_replicas_available{namespace="llm-analytics-hub",deployment="analytics-api"} < 2
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "Insufficient API pods running"
+            description: "Only {{ $value }} API pod(s) available (minimum: 2)"
+
+        # High Memory Usage
+        - alert: HighMemoryUsage
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="llm-analytics-hub",pod=~"analytics-api.*"}
+              /
+              container_spec_memory_limit_bytes{namespace="llm-analytics-hub",pod=~"analytics-api.*"}
+            ) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High memory usage in API pod"
+            description: "Memory usage is {{ $value }}% (threshold: 85%)"
+
+        # High CPU Usage
+        - alert: HighCPUUsage
+          expr: |
+            (
+              rate(container_cpu_usage_seconds_total{namespace="llm-analytics-hub",pod=~"analytics-api.*"}[5m])
+              /
+              container_spec_cpu_quota{namespace="llm-analytics-hub",pod=~"analytics-api.*"}
+            ) * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High CPU usage in API pod"
+            description: "CPU usage is {{ $value }}% (threshold: 80%)"
+
+        # Frequent Restarts
+        - alert: FrequentPodRestarts
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="llm-analytics-hub",pod=~"analytics-api.*"}[1h]) > 5
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "Frequent pod restarts detected"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour"

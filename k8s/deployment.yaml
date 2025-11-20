@@ -1,0 +1,202 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-analytics-hub
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-hub-config
+  namespace: llm-analytics-hub
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  PORT: "3000"
+  KAFKA_TOPIC: "llm-analytics-events"
+  DEFAULT_PAGE_SIZE: "50"
+  MAX_PAGE_SIZE: "1000"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: analytics-hub-secrets
+  namespace: llm-analytics-hub
+type: Opaque
+stringData:
+  DB_PASSWORD: "changeme"
+  REDIS_PASSWORD: "changeme"
+
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-api
+  namespace: llm-analytics-hub
+  labels:
+    app: analytics-api
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: analytics-api
+  template:
+    metadata:
+      labels:
+        app: analytics-api
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: llm-analytics-hub/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: analytics-hub-config
+                  key: PORT
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: analytics-hub-config
+                  key: NODE_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: analytics-hub-config
+                  key: LOG_LEVEL
+            - name: DB_HOST
+              value: "timescaledb-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "llm_analytics"
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-hub-secrets
+                  key: DB_PASSWORD
+            - name: REDIS_HOST
+              value: "redis-cluster"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-hub-secrets
+                  key: REDIS_PASSWORD
+            - name: KAFKA_BROKERS
+              value: "kafka-0.kafka-headless:9092,kafka-1.kafka-headless:9092,kafka-2.kafka-headless:9092"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-api-service
+  namespace: llm-analytics-hub
+  labels:
+    app: analytics-api
+spec:
+  type: ClusterIP
+  selector:
+    app: analytics-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP
+
+---
+# HorizontalPodAutoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-api-hpa
+  namespace: llm-analytics-hub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Ingress for API
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: analytics-api-ingress
+  namespace: llm-analytics-hub
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+spec:
+  tls:
+    - hosts:
+        - api.llm-analytics-hub.io
+      secretName: analytics-api-tls
+  rules:
+    - host: api.llm-analytics-hub.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics-api-service
+                port:
+                  number: 80

@@ -1,0 +1,84 @@
+# Multi-stage Dockerfile for TypeScript API
+# Optimized for minimal size and security
+
+ARG NODE_VERSION=20-alpine
+
+# ============================================
+# Stage 1: Dependencies - Install dependencies
+# ============================================
+FROM node:${NODE_VERSION} AS dependencies
+
+WORKDIR /app
+
+# Copy package files
+COPY api/package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# ============================================
+# Stage 2: Builder - Build TypeScript code
+# ============================================
+FROM node:${NODE_VERSION} AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY api/package*.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm ci
+
+# Copy source code
+COPY api/tsconfig.json ./
+COPY api/src ./src
+
+# Build TypeScript to JavaScript
+RUN npm run build
+
+# ============================================
+# Stage 3: Runtime - Minimal runtime image
+# ============================================
+FROM node:${NODE_VERSION} AS runtime
+
+# Install security updates
+RUN apk --no-cache upgrade
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init curl
+
+# Create non-root user
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
+
+WORKDIR /app
+
+# Copy production dependencies from dependencies stage
+COPY --from=dependencies --chown=appuser:appuser /app/node_modules ./node_modules
+
+# Copy built application from builder
+COPY --from=builder --chown=appuser:appuser /app/dist ./dist
+COPY --from=builder --chown=appuser:appuser /app/package*.json ./
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 3000 9090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/index.js"]
+
+# Labels
+LABEL maintainer="LLM Analytics Team <team@llmanalytics.io>"
+LABEL org.opencontainers.image.source="https://github.com/llm-analytics/llm-analytics-hub"
+LABEL org.opencontainers.image.description="LLM Analytics Hub API Server"
+LABEL org.opencontainers.image.version="0.1.0"

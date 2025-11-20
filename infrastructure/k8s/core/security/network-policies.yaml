@@ -1,0 +1,410 @@
+---
+# Default deny all ingress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# Default deny all egress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+# Allow ingress from NGINX Ingress Controller to API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-analytics-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+# Allow API to access TimescaleDB
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-timescaledb
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: timescaledb
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llm-analytics-api
+    - podSelector:
+        matchLabels:
+          app: stream-processor
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Allow API to access Redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-redis
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llm-analytics-api
+    - podSelector:
+        matchLabels:
+          app: stream-processor
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+# Allow API to access Kafka
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-kafka
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: llm-analytics-api
+    - podSelector:
+        matchLabels:
+          app: kafka-consumer
+    - podSelector:
+        matchLabels:
+          app: stream-processor
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9093
+---
+# Allow egress from API to external services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-analytics-api
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow to TimescaleDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow to Kafka
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  # Allow HTTPS to external APIs
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow HTTP to external services
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+---
+# Allow Prometheus to scrape metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scraping
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      monitoring: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 8080
+---
+# Allow Loki to collect logs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-loki-logging
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: logging
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: loki
+    ports:
+    - protocol: TCP
+      port: 3100
+---
+# Allow inter-pod communication for distributed systems
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kafka-internal
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9093
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9093
+---
+# Allow Redis Cluster internal communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-cluster-internal
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 16379
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 16379
+---
+# Monitoring namespace policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-access
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow access from ingress
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 3000
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow scraping all namespaces
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 9100
+---
+# Logging namespace policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-logging-access
+  namespace: logging
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow access from ingress
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3100
+  # Allow logs from all namespaces
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 3100
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow S3 access for log storage
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+---
+# Istio namespace policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-system
+  namespace: istio-system
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from all namespaces for sidecar injection
+  - from:
+    - namespaceSelector: {}
+  egress:
+  # Allow to all namespaces for mesh communication
+  - to:
+    - namespaceSelector: {}

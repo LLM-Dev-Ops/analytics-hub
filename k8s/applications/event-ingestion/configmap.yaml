@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: event-ingestion-config
+  namespace: llm-analytics
+  labels:
+    app: event-ingestion
+    component: ingestion
+data:
+  kafka_brokers: "kafka.llm-analytics.svc.cluster.local:9092"
+  kafka_topic: "llm-events"
+  max_payload_size: "10485760"  # 10MB
+
+  # Logging configuration
+  log_level: "info"
+  log_format: "json"
+
+  # Performance tuning
+  max_connections: "10000"
+  connection_timeout_secs: "30"
+  request_timeout_secs: "60"

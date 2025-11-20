@@ -1,0 +1,99 @@
+# Multi-stage Dockerfile for Rust services
+# Builds any of the 5 Rust microservices based on BUILD_TARGET arg
+# Optimized for minimal size and security
+
+ARG RUST_VERSION=1.75
+ARG BUILD_TARGET=event-ingestion
+
+# ============================================
+# Stage 1: Chef - Dependency caching layer
+# ============================================
+FROM rust:${RUST_VERSION}-slim-bookworm AS chef
+
+WORKDIR /app
+
+# Install cargo-chef for dependency caching
+RUN cargo install cargo-chef --locked
+
+# ============================================
+# Stage 2: Planner - Generate dependency recipe
+# ============================================
+FROM chef AS planner
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY benches ./benches
+COPY tests ./tests
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ============================================
+# Stage 3: Builder - Build dependencies
+# ============================================
+FROM chef AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libsasl2-dev \
+    cmake \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies (cached layer)
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy source code
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY benches ./benches
+COPY tests ./tests
+
+# Build the specific binary target
+ARG BUILD_TARGET
+RUN cargo build --release --bin ${BUILD_TARGET}
+
+# ============================================
+# Stage 4: Runtime - Minimal runtime image
+# ============================================
+FROM debian:bookworm-slim AS runtime
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    libsasl2-2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+
+WORKDIR /app
+
+# Copy binary from builder
+ARG BUILD_TARGET
+COPY --from=builder /app/target/release/${BUILD_TARGET} /app/service
+
+# Change ownership
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 8080 9090 8081
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8081/health || exit 1
+
+# Run the service
+ENTRYPOINT ["/app/service"]
+
+# Labels
+LABEL maintainer="LLM Analytics Team <team@llmanalytics.io>"
+LABEL org.opencontainers.image.source="https://github.com/llm-analytics/llm-analytics-hub"
+LABEL org.opencontainers.image.description="LLM Analytics Hub Rust Microservice"
+LABEL org.opencontainers.image.version="0.1.0"

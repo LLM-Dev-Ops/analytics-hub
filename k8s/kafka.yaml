@@ -1,0 +1,213 @@
+---
+# Kafka StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: llm-analytics-hub
+  labels:
+    app: kafka
+    component: streaming
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: streaming
+    spec:
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.5.0
+          ports:
+            - containerPort: 9092
+              name: plaintext
+            - containerPort: 9093
+              name: ssl
+          env:
+            - name: KAFKA_BROKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KAFKA_ZOOKEEPER_CONNECT
+              value: "zookeeper-service:2181"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://$(POD_NAME).kafka-headless:9092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "2"
+            - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_MIN_INSYNC_REPLICAS
+              value: "2"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "168"
+            - name: KAFKA_LOG_SEGMENT_BYTES
+              value: "1073741824"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "12"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 10
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 100Gi
+
+---
+# Kafka Headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: llm-analytics-hub
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092
+
+---
+# Zookeeper StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zookeeper
+  namespace: llm-analytics-hub
+  labels:
+    app: zookeeper
+spec:
+  serviceName: zookeeper-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      containers:
+        - name: zookeeper
+          image: confluentinc/cp-zookeeper:7.5.0
+          ports:
+            - containerPort: 2181
+              name: client
+            - containerPort: 2888
+              name: peer
+            - containerPort: 3888
+              name: leader-election
+          env:
+            - name: ZOOKEEPER_SERVER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZOOKEEPER_CLIENT_PORT
+              value: "2181"
+            - name: ZOOKEEPER_TICK_TIME
+              value: "2000"
+            - name: ZOOKEEPER_INIT_LIMIT
+              value: "5"
+            - name: ZOOKEEPER_SYNC_LIMIT
+              value: "2"
+            - name: ZOOKEEPER_SERVERS
+              value: "zookeeper-0.zookeeper-service:2888:3888;zookeeper-1.zookeeper-service:2888:3888;zookeeper-2.zookeeper-service:2888:3888"
+          volumeMounts:
+            - name: zookeeper-data
+              mountPath: /var/lib/zookeeper/data
+            - name: zookeeper-log
+              mountPath: /var/lib/zookeeper/log
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+  volumeClaimTemplates:
+    - metadata:
+        name: zookeeper-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 10Gi
+    - metadata:
+        name: zookeeper-log
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+# Zookeeper Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper-service
+  namespace: llm-analytics-hub
+  labels:
+    app: zookeeper
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: zookeeper
+  ports:
+    - name: client
+      port: 2181
+      targetPort: 2181
+    - name: peer
+      port: 2888
+      targetPort: 2888
+    - name: leader-election
+      port: 3888
+      targetPort: 3888

@@ -57,6 +57,10 @@ pub mod models {
     pub mod api;
 }
 
+pub mod pipeline;
+pub mod analytics;
+pub mod resilience;
+
 // Re-export commonly used types at the crate root
 pub use schemas::events::{
     AnalyticsEvent, CommonEventFields, EventPayload, EventType, Severity, SourceModule,

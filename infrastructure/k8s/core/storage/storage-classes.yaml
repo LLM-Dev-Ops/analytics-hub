@@ -1,0 +1,327 @@
+---
+# Fast SSD Storage Class (for databases and high-performance workloads)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/aws-ebs # Change based on cloud provider
+parameters:
+  type: gp3
+  iops: "16000"
+  throughput: "1000"
+  encrypted: "true"
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+# Standard SSD Storage Class (for general workloads)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-ssd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+---
+# HDD Storage Class (for archival and cold storage)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-hdd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: sc1 # Cold HDD
+  encrypted: "true"
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+---
+# NFS Storage Class (for shared storage)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-storage
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: cluster.local/nfs-provisioner
+parameters:
+  archiveOnDelete: "false"
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+---
+# Local SSD Storage Class (for ultra-low latency)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-ssd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+---
+# GCP-specific storage classes (if using GKE)
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd-gcp
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-ssd
+  replication-type: regional-pd
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+# Azure-specific storage classes (if using AKS)
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd-azure
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/azure-disk
+parameters:
+  storageaccounttype: Premium_LRS
+  kind: Managed
+  cachingmode: ReadOnly
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+# Volume Snapshot Class for backups
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-snapclass
+driver: ebs.csi.aws.com # Change based on cloud provider
+deletionPolicy: Retain
+parameters:
+  encrypted: "true"
+---
+# PersistentVolume examples for local SSDs
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv-1
+  labels:
+    type: local-ssd
+spec:
+  capacity:
+    storage: 500Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-ssd
+  local:
+    path: /mnt/disks/ssd1
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - node-1
+---
+# CSI Driver configurations
+---
+# AWS EBS CSI Driver StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-csi-fast
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  iops: "16000"
+  throughput: "1000"
+  encrypted: "true"
+  csi.storage.k8s.io/fstype: ext4
+  tagSpecification_1: "Name=llm-analytics-volume"
+  tagSpecification_2: "Environment=production"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+# Storage quota and limits
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: storage-quota
+  namespace: llm-analytics
+spec:
+  hard:
+    requests.storage: "5Ti"
+    persistentvolumeclaims: "50"
+    fast-ssd.storageclass.storage.k8s.io/requests.storage: "2Ti"
+    fast-ssd.storageclass.storage.k8s.io/persistentvolumeclaims: "20"
+    standard-ssd.storageclass.storage.k8s.io/requests.storage: "3Ti"
+    standard-ssd.storageclass.storage.k8s.io/persistentvolumeclaims: "30"
+---
+# NFS Server Provisioner (if using NFS)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-provisioner
+  namespace: storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfs-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-provisioner
+    spec:
+      serviceAccountName: nfs-provisioner
+      containers:
+      - name: nfs-provisioner
+        image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+        volumeMounts:
+        - name: nfs-client-root
+          mountPath: /persistentvolumes
+        env:
+        - name: PROVISIONER_NAME
+          value: cluster.local/nfs-provisioner
+        - name: NFS_SERVER
+          value: nfs-server.storage.svc.cluster.local
+        - name: NFS_PATH
+          value: /exports
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+      volumes:
+      - name: nfs-client-root
+        nfs:
+          server: nfs-server.storage.svc.cluster.local
+          path: /exports
+---
+# ServiceAccount for NFS provisioner
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-provisioner
+  namespace: storage
+---
+# RBAC for NFS provisioner
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nfs-provisioner-runner
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "update"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: run-nfs-provisioner
+subjects:
+- kind: ServiceAccount
+  name: nfs-provisioner
+  namespace: storage
+roleRef:
+  kind: ClusterRole
+  name: nfs-provisioner-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+# PrometheusRule for storage monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: storage
+    interval: 60s
+    rules:
+    - alert: PersistentVolumeUsageHigh
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes
+          /
+          kubelet_volume_stats_capacity_bytes
+        ) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Persistent volume usage is high"
+        description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+
+    - alert: PersistentVolumeAlmostFull
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes
+          /
+          kubelet_volume_stats_capacity_bytes
+        ) > 0.95
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Persistent volume almost full"
+        description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+
+    - alert: PersistentVolumeProvisionFailed
+      expr: |
+        increase(storage_operation_duration_seconds_count{status="fail-unknown",operation_name="volume_provision"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Persistent volume provision failed"
+        description: "Volume provisioning is failing"
+
+    - alert: PersistentVolumeBindFailed
+      expr: |
+        kube_persistentvolumeclaim_status_phase{phase="Pending"} > 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Persistent volume claim pending"
+        description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has been pending for more than 10 minutes"

@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zookeeper-config
+  namespace: kafka
+  labels:
+    app: zookeeper
+    component: messaging
+data:
+  zoo.cfg: |
+    # Basic settings
+    tickTime=2000
+    initLimit=10
+    syncLimit=5
+    dataDir=/data
+    dataLogDir=/datalog
+    clientPort=2181
+
+    # Ensemble settings
+    server.1=zookeeper-0.zookeeper-headless.kafka.svc.cluster.local:2888:3888
+    server.2=zookeeper-1.zookeeper-headless.kafka.svc.cluster.local:2888:3888
+    server.3=zookeeper-2.zookeeper-headless.kafka.svc.cluster.local:2888:3888
+
+    # Performance tuning
+    autopurge.snapRetainCount=10
+    autopurge.purgeInterval=24
+    maxClientCnxns=0
+    minSessionTimeout=4000
+    maxSessionTimeout=40000
+
+    # Advanced settings
+    preAllocSize=65536
+    snapCount=100000
+    cnxTimeout=5000
+
+    # Enable 4lw commands for monitoring
+    4lw.commands.whitelist=stat,ruok,conf,isro,srvr,mntr
+
+    # Security
+    requireClientAuthScheme=sasl
+    authProvider.sasl=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+
+    # Leader election
+    electionAlg=3
+    leaderServes=yes
+
+  log4j.properties: |
+    # Root logger
+    log4j.rootLogger=INFO, CONSOLE, ROLLINGFILE
+
+    # Console appender
+    log4j.appender.CONSOLE=org.apache.log4j.ConsoleAppender
+    log4j.appender.CONSOLE.Threshold=INFO
+    log4j.appender.CONSOLE.layout=org.apache.log4j.PatternLayout
+    log4j.appender.CONSOLE.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n
+
+    # Rolling file appender
+    log4j.appender.ROLLINGFILE=org.apache.log4j.RollingFileAppender
+    log4j.appender.ROLLINGFILE.Threshold=DEBUG
+    log4j.appender.ROLLINGFILE.File=/logs/zookeeper.log
+    log4j.appender.ROLLINGFILE.MaxFileSize=100MB
+    log4j.appender.ROLLINGFILE.MaxBackupIndex=10
+    log4j.appender.ROLLINGFILE.layout=org.apache.log4j.PatternLayout
+    log4j.appender.ROLLINGFILE.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n
+
+  java.env: |
+    # JVM settings
+    export JVMFLAGS="-Xmx3G -Xms3G"
+    export JVMFLAGS="$JVMFLAGS -XX:+UseG1GC"
+    export JVMFLAGS="$JVMFLAGS -XX:MaxGCPauseMillis=20"
+    export JVMFLAGS="$JVMFLAGS -XX:InitiatingHeapOccupancyPercent=35"
+    export JVMFLAGS="$JVMFLAGS -XX:G1HeapRegionSize=16M"
+    export JVMFLAGS="$JVMFLAGS -XX:MinMetaspaceSize=96M"
+    export JVMFLAGS="$JVMFLAGS -XX:MaxMetaspaceSize=256M"
+    export JVMFLAGS="$JVMFLAGS -XX:+ExplicitGCInvokesConcurrent"
+    export JVMFLAGS="$JVMFLAGS -XX:+HeapDumpOnOutOfMemoryError"
+    export JVMFLAGS="$JVMFLAGS -XX:HeapDumpPath=/logs/zookeeper-heap-dump.hprof"
+    export JVMFLAGS="$JVMFLAGS -Djava.awt.headless=true"
+    export JVMFLAGS="$JVMFLAGS -Dzookeeper.4lw.commands.whitelist=*"
+
+  metrics.properties: |
+    # JMX exporter configuration
+    startDelaySeconds=0
+    ssl=false
+    lowercaseOutputName=true
+    lowercaseOutputLabelNames=true
+
+  init.sh: |
+    #!/bin/bash
+    set -e
+
+    # Extract ID from hostname
+    HOSTNAME=$(hostname -s)
+    if [[ $HOSTNAME =~ -([0-9]+)$ ]]; then
+        MYID=$((${BASH_REMATCH[1]} + 1))
+    else
+        echo "Failed to extract ID from hostname"
+        exit 1
+    fi
+
+    echo "Initializing Zookeeper with myid: $MYID"
+
+    # Create data directories
+    mkdir -p /data /datalog
+
+    # Write myid file
+    echo $MYID > /data/myid
+
+    # Set permissions
+    chmod 755 /data /datalog
+
+    echo "Initialization complete"

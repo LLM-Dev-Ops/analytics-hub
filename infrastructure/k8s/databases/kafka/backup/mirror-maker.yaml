@@ -1,0 +1,212 @@
+---
+# MirrorMaker 2.0 for topic replication and disaster recovery
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mirror-maker-config
+  namespace: kafka
+  labels:
+    app: mirror-maker
+    component: backup
+data:
+  connect-mirror-maker.properties: |
+    # MirrorMaker 2.0 configuration
+    clusters = primary, backup
+    primary.bootstrap.servers = kafka:9092
+    backup.bootstrap.servers = backup-kafka.backup.svc.cluster.local:9092
+
+    # Primary cluster config
+    primary.security.protocol = SASL_SSL
+    primary.sasl.mechanism = SCRAM-SHA-512
+    primary.sasl.jaas.config = org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="${PRIMARY_PASSWORD}";
+    primary.ssl.truststore.location = /etc/kafka/secrets/kafka.server.truststore.jks
+    primary.ssl.truststore.password = ${TRUSTSTORE_PASSWORD}
+
+    # Backup cluster config
+    backup.security.protocol = SASL_SSL
+    backup.sasl.mechanism = SCRAM-SHA-512
+    backup.sasl.jaas.config = org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="${BACKUP_PASSWORD}";
+    backup.ssl.truststore.location = /etc/kafka/secrets/kafka.server.truststore.jks
+    backup.ssl.truststore.password = ${TRUSTSTORE_PASSWORD}
+
+    # Replication flows
+    primary->backup.enabled = true
+    primary->backup.topics = llm-.*
+    backup->primary.enabled = false
+
+    # Replication settings
+    replication.factor = 3
+    checkpoints.topic.replication.factor = 3
+    heartbeats.topic.replication.factor = 3
+    offset-syncs.topic.replication.factor = 3
+    config.storage.replication.factor = 3
+    offset.storage.replication.factor = 3
+    status.storage.replication.factor = 3
+
+    # Performance tuning
+    tasks.max = 10
+    replication.policy.class = org.apache.kafka.connect.mirror.DefaultReplicationPolicy
+    replication.policy.separator = .
+    sync.topic.configs.enabled = true
+    sync.topic.acls.enabled = true
+    emit.checkpoints.enabled = true
+    emit.heartbeats.enabled = true
+    refresh.topics.enabled = true
+    refresh.topics.interval.seconds = 600
+    refresh.groups.enabled = true
+    refresh.groups.interval.seconds = 600
+
+    # Offset translation
+    offset-syncs.topic.location = backup
+    checkpoints.topic.location = backup
+
+    # Topic filters
+    topics.blacklist = .*[\\-\\.]internal, .*\\.replica, __.*
+    groups.blacklist = console-consumer-.*, connect-.*, __.*
+
+  consumer.properties: |
+    # Consumer configuration
+    group.id = mirror-maker-consumer
+    auto.offset.reset = earliest
+    enable.auto.commit = false
+    max.poll.records = 500
+    max.poll.interval.ms = 300000
+
+  producer.properties: |
+    # Producer configuration
+    acks = all
+    compression.type = lz4
+    max.in.flight.requests.per.connection = 5
+    retries = 2147483647
+    max.request.size = 10485760
+    buffer.memory = 67108864
+    batch.size = 32768
+    linger.ms = 10
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirror-maker
+  namespace: kafka
+  labels:
+    app: mirror-maker
+    component: backup
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mirror-maker
+  template:
+    metadata:
+      labels:
+        app: mirror-maker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9999"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - mirror-maker
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: mirror-maker
+        image: confluentinc/cp-kafka:7.5.3
+        command:
+        - /bin/bash
+        - -c
+        - |
+          connect-mirror-maker /config/connect-mirror-maker.properties
+        env:
+        - name: PRIMARY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: admin-password
+        - name: BACKUP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-backup-secrets
+              key: admin-password
+        - name: TRUSTSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-truststore-password
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx2G -Xms2G"
+        - name: KAFKA_JVM_PERFORMANCE_OPTS
+          value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=20"
+        - name: KAFKA_JMX_PORT
+          value: "9999"
+        - name: KAFKA_JMX_HOSTNAME
+          value: "127.0.0.1"
+        ports:
+        - containerPort: 9999
+          name: jmx
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: secrets
+          mountPath: /etc/kafka/secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - ps aux | grep -v grep | grep connect-mirror-maker
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - ps aux | grep -v grep | grep connect-mirror-maker
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: mirror-maker-config
+      - name: secrets
+        secret:
+          secretName: kafka-jks-secrets
+
+---
+# Service for MirrorMaker metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: mirror-maker-metrics
+  namespace: kafka
+  labels:
+    app: mirror-maker
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9999"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9999
+    targetPort: 9999
+    protocol: TCP
+    name: jmx
+  selector:
+    app: mirror-maker

@@ -1,0 +1,112 @@
+---
+# TimescaleDB StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: llm-analytics-hub
+  labels:
+    app: timescaledb
+    component: database
+spec:
+  serviceName: timescaledb-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: timescaledb
+  template:
+    metadata:
+      labels:
+        app: timescaledb
+        component: database
+    spec:
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb-ha:pg15-latest
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: "llm_analytics"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-hub-secrets
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: timescaledb-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: timescaledb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 100Gi
+
+---
+# TimescaleDB Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb-service
+  namespace: llm-analytics-hub
+  labels:
+    app: timescaledb
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: timescaledb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+---
+# TimescaleDB Read-Only Service (for read replicas)
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb-read
+  namespace: llm-analytics-hub
+  labels:
+    app: timescaledb
+spec:
+  type: ClusterIP
+  selector:
+    app: timescaledb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

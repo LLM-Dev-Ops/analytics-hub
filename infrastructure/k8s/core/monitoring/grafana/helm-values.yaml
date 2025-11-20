@@ -1,0 +1,289 @@
+# Grafana Helm Values (included in kube-prometheus-stack)
+# Can also be deployed standalone: grafana/grafana
+
+grafana:
+  enabled: true
+
+  # Replica count for high availability
+  replicas: 2
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  # Pod disruption budget
+  podDisruptionBudget:
+    minAvailable: 1
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    fsGroup: 472
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+
+  # Persistence
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: fast-ssd
+    accessModes:
+    - ReadWriteOnce
+    size: 10Gi
+
+  # Admin credentials
+  adminUser: admin
+  adminPassword: "changeme" # Change this or use existing secret
+
+  # Use existing secret for admin password
+  # admin:
+  #   existingSecret: grafana-admin-credentials
+  #   userKey: admin-user
+  #   passwordKey: admin-password
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    hosts:
+    - grafana.llm-analytics.io
+    tls:
+    - secretName: grafana-tls
+      hosts:
+      - grafana.llm-analytics.io
+
+  # Grafana configuration
+  grafana.ini:
+    server:
+      domain: grafana.llm-analytics.io
+      root_url: https://grafana.llm-analytics.io
+      serve_from_sub_path: false
+
+    security:
+      admin_user: admin
+      admin_password: changeme
+      disable_gravatar: true
+      cookie_secure: true
+      cookie_samesite: strict
+      strict_transport_security: true
+
+    users:
+      allow_sign_up: false
+      auto_assign_org: true
+      auto_assign_org_role: Viewer
+
+    auth:
+      disable_login_form: false
+      oauth_auto_login: false
+
+    # OIDC/OAuth configuration (example)
+    auth.generic_oauth:
+      enabled: false
+      name: OAuth
+      allow_sign_up: true
+      client_id: grafana
+      client_secret: YOUR_CLIENT_SECRET
+      scopes: openid profile email
+      auth_url: https://auth.llm-analytics.io/oauth/authorize
+      token_url: https://auth.llm-analytics.io/oauth/token
+      api_url: https://auth.llm-analytics.io/oauth/userinfo
+      role_attribute_path: contains(groups[*], 'admin') && 'Admin' || 'Viewer'
+
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+
+    log:
+      mode: console
+      level: info
+
+    metrics:
+      enabled: true
+      basic_auth_username: prometheus
+      basic_auth_password: changeme
+
+  # Data sources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      # Prometheus datasource
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-operated.monitoring.svc:9090
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: 30s
+          queryTimeout: 60s
+          httpMethod: POST
+
+      # Loki datasource
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.logging.svc:80
+        editable: false
+        jsonData:
+          maxLines: 1000
+          derivedFields:
+          - datasourceUid: tempo
+            matcherRegex: "trace_id=(\\w+)"
+            name: TraceID
+            url: '$${__value.raw}'
+
+      # Tempo datasource (if using distributed tracing)
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.monitoring.svc:3100
+        editable: false
+        jsonData:
+          tracesToLogs:
+            datasourceUid: loki
+            tags: ['job', 'instance', 'pod', 'namespace']
+            mappedTags: [{ key: 'service.name', value: 'service' }]
+            mapTagNamesEnabled: false
+            spanStartTimeShift: '1h'
+            spanEndTimeShift: '1h'
+            filterByTraceID: false
+            filterBySpanID: false
+          serviceMap:
+            datasourceUid: prometheus
+
+      # AlertManager datasource
+      - name: AlertManager
+        type: alertmanager
+        access: proxy
+        url: http://alertmanager-operated.monitoring.svc:9093
+        editable: false
+        jsonData:
+          implementation: prometheus
+
+  # Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+      - name: 'kubernetes'
+        orgId: 1
+        folder: 'Kubernetes'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/kubernetes
+
+      - name: 'application'
+        orgId: 1
+        folder: 'Application'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/application
+
+  # Dashboard ConfigMaps
+  dashboardsConfigMaps:
+    kubernetes: grafana-dashboards-kubernetes
+    application: grafana-dashboards-application
+
+  # Sidecar for automatic dashboard loading
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      folder: /tmp/dashboards
+      searchNamespace: ALL
+      provider:
+        foldersFromFilesStructure: true
+
+    datasources:
+      enabled: true
+      label: grafana_datasource
+      labelValue: "1"
+      searchNamespace: ALL
+
+  # Plugins
+  plugins:
+  - grafana-piechart-panel
+  - grafana-clock-panel
+  - grafana-simple-json-datasource
+  - grafana-worldmap-panel
+  - redis-datasource
+  - yesoreyeram-boomtable-panel
+
+  # SMTP configuration for alerting
+  smtp:
+    enabled: true
+    host: smtp.llm-analytics.io:587
+    user: alerting@llm-analytics.io
+    password: changeme
+    from_address: grafana@llm-analytics.io
+    from_name: Grafana
+
+  # Affinity for high availability
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - grafana
+          topologyKey: kubernetes.io/hostname
+
+  # ServiceMonitor for Prometheus
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    labels:
+      prometheus: kube-prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+
+  # Environment variables
+  env:
+    GF_EXPLORE_ENABLED: "true"
+    GF_ALERTING_ENABLED: "true"
+    GF_UNIFIED_ALERTING_ENABLED: "true"
+    GF_RENDERING_SERVER_URL: http://grafana-image-renderer.monitoring.svc:8081/render
+    GF_RENDERING_CALLBACK_URL: http://grafana.monitoring.svc:80/
+    GF_LOG_FILTERS: rendering:debug

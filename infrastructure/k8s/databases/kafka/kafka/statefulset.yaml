@@ -1,0 +1,381 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: kafka
+  labels:
+    app: kafka
+    component: messaging
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: messaging
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7071"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - kafka
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kafka
+              topologyKey: topology.kubernetes.io/zone
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-config
+        image: busybox:1.36
+        command:
+        - /bin/sh
+        - -c
+        - |
+          cp /config-scripts/init.sh /tmp/init.sh
+          chmod +x /tmp/init.sh
+          /tmp/init.sh
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka
+        - name: logs
+          mountPath: /var/log/kafka
+        - name: config
+          mountPath: /config-scripts
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.5.3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9092
+          name: internal
+          protocol: TCP
+        - containerPort: 9094
+          name: external
+          protocol: TCP
+        - containerPort: 7071
+          name: metrics
+          protocol: TCP
+        - containerPort: 9999
+          name: jmx
+          protocol: TCP
+        env:
+        # Kafka settings
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: KAFKA_BROKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "zookeeper-0.zookeeper-headless.kafka.svc.cluster.local:2181,zookeeper-1.zookeeper-headless.kafka.svc.cluster.local:2181,zookeeper-2.zookeeper-headless.kafka.svc.cluster.local:2181"
+
+        # Rack awareness
+        - name: ZONE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['topology.kubernetes.io/zone']
+        - name: KAFKA_RACK
+          value: "$(ZONE)"
+
+        # Listeners
+        - name: KAFKA_LISTENERS
+          value: "INTERNAL://:9092,EXTERNAL://:9094"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "INTERNAL://$(HOSTNAME).kafka-headless.kafka.svc.cluster.local:9092,EXTERNAL://$(HOSTNAME).kafka-external.kafka.svc.cluster.local:9094"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "INTERNAL"
+
+        # Replication
+        - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+          value: "3"
+        - name: KAFKA_MIN_INSYNC_REPLICAS
+          value: "2"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "3"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "3"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "2"
+
+        # Performance
+        - name: KAFKA_NUM_NETWORK_THREADS
+          value: "8"
+        - name: KAFKA_NUM_IO_THREADS
+          value: "16"
+        - name: KAFKA_SOCKET_SEND_BUFFER_BYTES
+          value: "1048576"
+        - name: KAFKA_SOCKET_RECEIVE_BUFFER_BYTES
+          value: "1048576"
+        - name: KAFKA_SOCKET_REQUEST_MAX_BYTES
+          value: "104857600"
+
+        # Log settings
+        - name: KAFKA_LOG_DIRS
+          value: "/var/lib/kafka/data"
+        - name: KAFKA_NUM_PARTITIONS
+          value: "16"
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "168"
+        - name: KAFKA_LOG_RETENTION_BYTES
+          value: "536870912000"
+        - name: KAFKA_LOG_SEGMENT_BYTES
+          value: "1073741824"
+        - name: KAFKA_LOG_SEGMENT_MS
+          value: "86400000"
+
+        # Compression
+        - name: KAFKA_COMPRESSION_TYPE
+          value: "lz4"
+
+        # Message size
+        - name: KAFKA_MESSAGE_MAX_BYTES
+          value: "10485760"
+        - name: KAFKA_REPLICA_FETCH_MAX_BYTES
+          value: "10485760"
+
+        # High availability
+        - name: KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE
+          value: "false"
+        - name: KAFKA_AUTO_LEADER_REBALANCE_ENABLE
+          value: "true"
+        - name: KAFKA_LEADER_IMBALANCE_CHECK_INTERVAL_SECONDS
+          value: "300"
+
+        # Topic management
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: "false"
+        - name: KAFKA_DELETE_TOPIC_ENABLE
+          value: "true"
+
+        # SASL/SCRAM
+        - name: KAFKA_SASL_ENABLED_MECHANISMS
+          value: "SCRAM-SHA-512"
+        - name: KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL
+          value: "SCRAM-SHA-512"
+
+        # SSL
+        - name: KAFKA_SSL_KEYSTORE_LOCATION
+          value: "/etc/kafka/secrets/kafka.server.keystore.jks"
+        - name: KAFKA_SSL_TRUSTSTORE_LOCATION
+          value: "/etc/kafka/secrets/kafka.server.truststore.jks"
+        - name: SSL_KEYSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-keystore-password
+        - name: SSL_KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-key-password
+        - name: SSL_TRUSTSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-truststore-password
+        - name: KAFKA_SSL_KEYSTORE_PASSWORD
+          value: "$(SSL_KEYSTORE_PASSWORD)"
+        - name: KAFKA_SSL_KEY_PASSWORD
+          value: "$(SSL_KEY_PASSWORD)"
+        - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+          value: "$(SSL_TRUSTSTORE_PASSWORD)"
+
+        # Authorization
+        - name: KAFKA_AUTHORIZER_CLASS_NAME
+          value: "kafka.security.authorizer.AclAuthorizer"
+        - name: KAFKA_SUPER_USERS
+          value: "User:admin"
+
+        # Security protocol
+        - name: KAFKA_SECURITY_INTER_BROKER_PROTOCOL
+          value: "SASL_SSL"
+
+        # Passwords
+        - name: KAFKA_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: admin-password
+        - name: ZK_KAFKA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: zk-kafka-password
+
+        # JVM settings
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx8G -Xms8G"
+        - name: KAFKA_JVM_PERFORMANCE_OPTS
+          value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:G1HeapRegionSize=16M -XX:MinMetaspaceSize=96M -XX:MaxMetaspaceSize=256M -XX:+ExplicitGCInvokesConcurrent -XX:+ParallelRefProcEnabled"
+
+        # JMX
+        - name: KAFKA_JMX_PORT
+          value: "9999"
+        - name: KAFKA_JMX_HOSTNAME
+          value: "127.0.0.1"
+
+        # Prometheus JMX Exporter
+        - name: KAFKA_OPTS
+          value: "-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka-config.yml -Djava.security.auth.login.config=/etc/kafka/config/kafka_server_jaas.conf"
+
+        resources:
+          requests:
+            cpu: "2"
+            memory: 16Gi
+          limits:
+            cpu: "4"
+            memory: 16Gi
+
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - |
+              kafka-broker-api-versions --bootstrap-server localhost:9092 | grep -q ApiVersion
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka
+        - name: logs
+          mountPath: /var/log/kafka
+        - name: config
+          mountPath: /etc/kafka/config
+        - name: jks-secrets
+          mountPath: /etc/kafka/secrets
+          readOnly: true
+        - name: jmx-exporter
+          mountPath: /opt/jmx-exporter
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+
+      volumes:
+      - name: config
+        configMap:
+          name: kafka-config
+          defaultMode: 0755
+      - name: jks-secrets
+        secret:
+          secretName: kafka-jks-secrets
+          defaultMode: 0400
+      - name: jmx-exporter
+        configMap:
+          name: jmx-exporter-config
+          defaultMode: 0755
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: kafka
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 500Gi
+  - metadata:
+      name: logs
+      labels:
+        app: kafka
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-pdb
+  namespace: kafka
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: kafka
+
+---
+# ConfigMap for JMX Exporter
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jmx-exporter-config
+  namespace: kafka
+data:
+  jmx_prometheus_javaagent.jar: |
+    # Download from: https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.20.0/jmx_prometheus_javaagent-0.20.0.jar
+    # This is a placeholder - mount actual JAR file
+  kafka-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+    - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+      labels:
+        clientId: "$3"
+        topic: "$4"
+        partition: "$5"
+    - pattern: kafka.server<type=(.+), name=(.+)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE

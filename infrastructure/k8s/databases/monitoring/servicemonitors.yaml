@@ -1,0 +1,400 @@
+---
+# ServiceMonitor for TimescaleDB
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: timescaledb-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: timescaledb
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: timescaledb
+  endpoints:
+    - port: postgres
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: instance
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'pg_.*'
+          action: keep
+
+---
+# ServiceMonitor for TimescaleDB Postgres Exporter
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-exporter-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: postgres-exporter
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+
+---
+# Postgres Exporter Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: postgres-exporter
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app: postgres-exporter
+        component: monitoring
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: prometheuscommunity/postgres-exporter:v0.15.0
+          ports:
+            - containerPort: 9187
+              name: metrics
+          env:
+            - name: DATA_SOURCE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-exporter-secret
+                  key: data-source-name
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+---
+# Postgres Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: postgres-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-exporter
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: 9187
+
+---
+# ServiceMonitor for Redis
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-cluster
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: redis-cluster
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: instance
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+
+---
+# Redis Exporter Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-exporter
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+        component: monitoring
+    spec:
+      containers:
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.55.0
+          ports:
+            - containerPort: 9121
+              name: metrics
+          env:
+            - name: REDIS_ADDR
+              value: "redis-cluster-service:6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-hub-secrets
+                  key: REDIS_PASSWORD
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9121
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9121
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+---
+# Redis Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-exporter
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: 9121
+
+---
+# ServiceMonitor for Kafka
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: kafka
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: kafka
+  endpoints:
+    - port: jmx-metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: instance
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+
+---
+# Kafka JMX Exporter ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-jmx-exporter-config
+  namespace: llm-analytics-hub
+data:
+  jmx-exporter.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    whitelistObjectNames:
+      - "kafka.server:type=BrokerTopicMetrics,name=*"
+      - "kafka.server:type=ReplicaManager,name=*"
+      - "kafka.server:type=KafkaRequestHandlerPool,name=*"
+      - "kafka.network:type=RequestMetrics,name=*"
+      - "kafka.controller:type=KafkaController,name=*"
+      - "kafka.log:type=LogFlushStats,name=*"
+      - "java.lang:type=OperatingSystem"
+      - "java.lang:type=Memory"
+      - "java.lang:type=GarbageCollector,name=*"
+    rules:
+      - pattern: 'kafka.server<type=(.+), name=(.+)><>Value'
+        name: kafka_server_$1_$2
+      - pattern: 'kafka.(\w+)<type=(.+), name=(.+)><>Value'
+        name: kafka_$1_$2_$3
+
+---
+# ServiceMonitor for Zookeeper
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zookeeper-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: zookeeper
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: zookeeper
+  endpoints:
+    - port: jmx-metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: instance
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+
+---
+# Node Exporter DaemonSet for disk metrics
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: node-exporter
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+        component: monitoring
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.7.0
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+          ports:
+            - containerPort: 9100
+              name: metrics
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
+
+---
+# Node Exporter Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: llm-analytics-hub
+  labels:
+    app: node-exporter
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: node-exporter
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+
+---
+# ServiceMonitor for Node Exporter
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-exporter-monitor
+  namespace: llm-analytics-hub
+  labels:
+    app: node-exporter
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      scheme: http

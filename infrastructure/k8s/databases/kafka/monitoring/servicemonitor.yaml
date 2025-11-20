@@ -1,0 +1,255 @@
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-metrics
+  namespace: kafka
+  labels:
+    app: kafka
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: kafka
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - kafka
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zookeeper-metrics
+  namespace: kafka
+  labels:
+    app: zookeeper
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: zookeeper
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - kafka
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-lag-exporter
+  namespace: kafka
+  labels:
+    app: kafka-lag-exporter
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: kafka-lag-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - kafka
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-grafana-dashboard
+  namespace: kafka
+  labels:
+    app: kafka
+    component: monitoring
+    grafana_dashboard: "1"
+data:
+  kafka-overview.json: |
+    {
+      "dashboard": {
+        "title": "Kafka Cluster Overview",
+        "tags": ["kafka", "messaging"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Active Controllers",
+            "targets": [
+              {
+                "expr": "kafka_controller_kafkacontroller_activecontrollercount"
+              }
+            ],
+            "type": "stat"
+          },
+          {
+            "title": "Online Partitions",
+            "targets": [
+              {
+                "expr": "kafka_controller_kafkacontroller_offlinepartitionscount"
+              }
+            ],
+            "type": "stat"
+          },
+          {
+            "title": "Under-Replicated Partitions",
+            "targets": [
+              {
+                "expr": "kafka_server_replicamanager_underreplicatedpartitions"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Messages In Per Second",
+            "targets": [
+              {
+                "expr": "rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m])"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Bytes In Per Second",
+            "targets": [
+              {
+                "expr": "rate(kafka_server_brokertopicmetrics_bytesinpersec_total[5m])"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Bytes Out Per Second",
+            "targets": [
+              {
+                "expr": "rate(kafka_server_brokertopicmetrics_bytesoutpersec_total[5m])"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Request Queue Size",
+            "targets": [
+              {
+                "expr": "kafka_network_requestchannel_requestqueuesize"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Consumer Lag",
+            "targets": [
+              {
+                "expr": "kafka_consumergroup_group_max_lag"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+
+  kafka-topics.json: |
+    {
+      "dashboard": {
+        "title": "Kafka Topics",
+        "tags": ["kafka", "topics"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Messages Per Topic",
+            "targets": [
+              {
+                "expr": "rate(kafka_server_brokertopicmetrics_messagesinpersec_total{topic!=\"\"}[5m])"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Bytes In Per Topic",
+            "targets": [
+              {
+                "expr": "rate(kafka_server_brokertopicmetrics_bytesinpersec_total{topic!=\"\"}[5m])"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Log Size Per Topic",
+            "targets": [
+              {
+                "expr": "kafka_log_log_size{topic!=\"\"}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Partition Count Per Topic",
+            "targets": [
+              {
+                "expr": "count by (topic) (kafka_cluster_partition_replicascount)"
+              }
+            ],
+            "type": "table"
+          }
+        ]
+      }
+    }
+
+  zookeeper-overview.json: |
+    {
+      "dashboard": {
+        "title": "Zookeeper Cluster",
+        "tags": ["zookeeper"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Outstanding Requests",
+            "targets": [
+              {
+                "expr": "zookeeper_outstandingrequests"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Average Latency",
+            "targets": [
+              {
+                "expr": "zookeeper_avglatency"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Alive Connections",
+            "targets": [
+              {
+                "expr": "zookeeper_numaliveconnections"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Watch Count",
+            "targets": [
+              {
+                "expr": "zookeeper_watchcount"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }

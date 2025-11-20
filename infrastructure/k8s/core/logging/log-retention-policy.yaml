@@ -1,0 +1,252 @@
+---
+# Log Retention ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-retention-policy
+  namespace: logging
+data:
+  retention.yaml: |
+    # Log retention policies by namespace and application
+    policies:
+      # Default retention for all logs
+      default:
+        retention_days: 31
+        compaction_interval: 10m
+
+      # Critical application logs - longer retention
+      llm-analytics:
+        retention_days: 90
+        compaction_interval: 30m
+        labels:
+          - namespace: llm-analytics
+            app: llm-analytics-api
+
+      # Infrastructure logs - medium retention
+      infrastructure:
+        retention_days: 60
+        compaction_interval: 20m
+        labels:
+          - namespace: ingress-nginx
+          - namespace: cert-manager
+          - namespace: monitoring
+
+      # Debug logs - short retention
+      debug:
+        retention_days: 7
+        compaction_interval: 5m
+        labels:
+          - level: debug
+
+      # Audit logs - long retention for compliance
+      audit:
+        retention_days: 365
+        compaction_interval: 60m
+        labels:
+          - type: audit
+---
+# CronJob for log cleanup (if not using Loki compactor)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-cleanup
+  namespace: logging
+spec:
+  # Run daily at 2 AM
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: log-cleanup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: log-cleanup
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: cleanup
+            image: curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Delete logs older than retention period
+              echo "Starting log cleanup..."
+
+              # Calculate timestamps for different retention periods
+              NOW=$(date +%s)
+              DAYS_7=$((NOW - 7*24*3600))
+              DAYS_31=$((NOW - 31*24*3600))
+              DAYS_60=$((NOW - 60*24*3600))
+              DAYS_90=$((NOW - 90*24*3600))
+
+              # API endpoint for Loki
+              LOKI_URL="http://loki-gateway.logging.svc/loki/api/v1"
+
+              # Delete old debug logs (7 days)
+              echo "Deleting debug logs older than 7 days..."
+              curl -X POST "${LOKI_URL}/delete?query={level=\"debug\"}&start=${DAYS_7}000000000"
+
+              # Delete old infrastructure logs (60 days)
+              echo "Deleting infrastructure logs older than 60 days..."
+              for ns in ingress-nginx cert-manager monitoring; do
+                curl -X POST "${LOKI_URL}/delete?query={namespace=\"${ns}\"}&start=${DAYS_60}000000000"
+              done
+
+              # Delete old application logs (90 days)
+              echo "Deleting application logs older than 90 days..."
+              curl -X POST "${LOKI_URL}/delete?query={namespace=\"llm-analytics\"}&start=${DAYS_90}000000000"
+
+              echo "Log cleanup completed"
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+---
+# ServiceAccount for log cleanup
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: log-cleanup
+  namespace: logging
+---
+# Role for log cleanup
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: log-cleanup
+  namespace: logging
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+# RoleBinding for log cleanup
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: log-cleanup
+  namespace: logging
+subjects:
+- kind: ServiceAccount
+  name: log-cleanup
+  namespace: logging
+roleRef:
+  kind: Role
+  name: log-cleanup
+  apiGroup: rbac.authorization.k8s.io
+---
+# PrometheusRule for log monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: loki-alerts
+  namespace: logging
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: loki
+    interval: 60s
+    rules:
+    # High ingestion rate
+    - alert: LokiHighIngestionRate
+      expr: |
+        sum(rate(loki_distributor_bytes_received_total[5m])) > 100000000
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High log ingestion rate"
+        description: "Loki is ingesting {{ $value | humanize }}B/s"
+
+    # Request errors
+    - alert: LokiRequestErrors
+      expr: |
+        sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m])) > 10
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High error rate in Loki"
+        description: "Loki is experiencing {{ $value }} errors/s"
+
+    # Ingester not ready
+    - alert: LokiIngesterNotReady
+      expr: |
+        kube_statefulset_status_replicas_ready{statefulset="loki-ingester"} < 3
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Loki ingester not ready"
+        description: "Only {{ $value }} Loki ingesters are ready"
+
+    # High query latency
+    - alert: LokiHighQueryLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(loki_request_duration_seconds_bucket{route=~".*query.*"}[5m])) by (le)
+        ) > 10
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High Loki query latency"
+        description: "p99 query latency is {{ $value }}s"
+
+    # Storage usage high
+    - alert: LokiStorageUsageHigh
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes{namespace="logging",persistentvolumeclaim=~"loki-.*"}
+          /
+          kubelet_volume_stats_capacity_bytes{namespace="logging",persistentvolumeclaim=~"loki-.*"}
+        ) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Loki storage usage high"
+        description: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+
+    # Too many streams
+    - alert: LokiTooManyStreams
+      expr: |
+        loki_ingester_memory_streams > 100000
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Too many active streams in Loki"
+        description: "Loki ingester {{ $labels.pod }} has {{ $value }} active streams"
+
+    # Compactor failures
+    - alert: LokiCompactorFailing
+      expr: |
+        rate(loki_compactor_runs_failed_total[5m]) > 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Loki compactor failing"
+        description: "Loki compactor is failing {{ $value }} times per second"

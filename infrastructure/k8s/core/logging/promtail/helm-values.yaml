@@ -1,0 +1,253 @@
+# Promtail Helm Values
+# Helm chart: grafana/promtail
+# Version: 6.15.0+
+
+# Promtail configuration
+config:
+  # Loki server URL
+  clients:
+  - url: http://loki-gateway.logging.svc/loki/api/v1/push
+    tenant_id: 1
+    batchwait: 1s
+    batchsize: 1048576
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+    timeout: 10s
+
+  # Server configuration
+  server:
+    http_listen_port: 3101
+    grpc_listen_port: 9095
+    log_level: info
+
+  # Positions file
+  positions:
+    filename: /run/promtail/positions.yaml
+
+  # Scrape configurations
+  scrape_configs:
+  # Kubernetes pod logs
+  - job_name: kubernetes-pods
+    pipeline_stages:
+    - cri: {}
+    - multiline:
+        firstline: '^\d{4}-\d{2}-\d{2}'
+        max_wait_time: 3s
+    - regex:
+        expression: '^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>\S+) (?P<message>.*)$'
+    - labels:
+        stream:
+    - timestamp:
+        source: timestamp
+        format: RFC3339Nano
+    - output:
+        source: message
+
+    kubernetes_sd_configs:
+    - role: pod
+
+    relabel_configs:
+    # Drop pods from kube-system
+    - source_labels:
+      - __meta_kubernetes_namespace
+      regex: kube-system
+      action: drop
+
+    # Keep only pods with logging enabled
+    - source_labels:
+      - __meta_kubernetes_pod_label_logging
+      regex: "true"
+      action: keep
+
+    # Add namespace label
+    - source_labels:
+      - __meta_kubernetes_namespace
+      target_label: namespace
+
+    # Add pod name label
+    - source_labels:
+      - __meta_kubernetes_pod_name
+      target_label: pod
+
+    # Add container name label
+    - source_labels:
+      - __meta_kubernetes_pod_container_name
+      target_label: container
+
+    # Add app label
+    - source_labels:
+      - __meta_kubernetes_pod_label_app
+      target_label: app
+
+    # Add node name label
+    - source_labels:
+      - __meta_kubernetes_pod_node_name
+      target_label: node
+
+    # Set log path
+    - replacement: /var/log/pods/*$1/*.log
+      separator: /
+      source_labels:
+      - __meta_kubernetes_pod_uid
+      - __meta_kubernetes_pod_container_name
+      target_label: __path__
+
+  # Systemd journal logs
+  - job_name: journal
+    journal:
+      path: /var/log/journal
+      max_age: 12h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+    - source_labels:
+      - __journal__systemd_unit
+      target_label: unit
+    - source_labels:
+      - __journal__hostname
+      target_label: hostname
+
+  # Syslog
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      label_structured_data: true
+      labels:
+        job: syslog
+    relabel_configs:
+    - source_labels:
+      - __syslog_message_hostname
+      target_label: hostname
+
+  # Static files (for custom log paths)
+  - job_name: custom-logs
+    static_configs:
+    - targets:
+      - localhost
+      labels:
+        job: custom-logs
+        __path__: /var/log/*.log
+
+# DaemonSet mode (run on every node)
+daemonSet:
+  enabled: true
+
+# Resource limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Tolerations to run on all nodes
+tolerations:
+- effect: NoSchedule
+  key: node-role.kubernetes.io/master
+  operator: Exists
+- effect: NoSchedule
+  key: node-role.kubernetes.io/control-plane
+  operator: Exists
+
+# Volume mounts
+extraVolumes:
+- name: pods
+  hostPath:
+    path: /var/log/pods
+- name: docker
+  hostPath:
+    path: /var/lib/docker/containers
+- name: journal
+  hostPath:
+    path: /var/log/journal
+
+extraVolumeMounts:
+- name: pods
+  mountPath: /var/log/pods
+  readOnly: true
+- name: docker
+  mountPath: /var/lib/docker/containers
+  readOnly: true
+- name: journal
+  mountPath: /var/log/journal
+  readOnly: true
+
+# Security context
+securityContext:
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: false # Needs to run as root to access logs
+  runAsUser: 0
+  capabilities:
+    drop:
+    - ALL
+    add:
+    - DAC_READ_SEARCH
+
+# Pod security context
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: logging
+  labels:
+    prometheus: kube-prometheus
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Priority class
+priorityClassName: system-node-critical
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3101"
+
+# Environment variables
+env:
+- name: HOSTNAME
+  valueFrom:
+    fieldRef:
+      fieldPath: spec.nodeName
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /ready
+    port: http-metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 1
+  successThreshold: 1
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http-metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 1
+  successThreshold: 1
+  failureThreshold: 3
+
+# Extra arguments
+extraArgs:
+- -client.external-labels=cluster=llm-analytics-prod
+- -config.expand-env=true
+
+# ConfigMap for custom pipeline stages
+configmap:
+  enabled: true

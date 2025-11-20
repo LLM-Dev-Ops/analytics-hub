@@ -1,0 +1,53 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka
+  labels:
+    name: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: llm-analytics-hub
+    environment: production
+
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: kafka-quota
+  namespace: kafka
+spec:
+  hard:
+    requests.cpu: "50"
+    requests.memory: 200Gi
+    requests.storage: 5Ti
+    persistentvolumeclaims: "50"
+    pods: "50"
+    services: "20"
+
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: kafka-limit-range
+  namespace: kafka
+spec:
+  limits:
+  - max:
+      cpu: "8"
+      memory: 32Gi
+    min:
+      cpu: 100m
+      memory: 128Mi
+    default:
+      cpu: "2"
+      memory: 4Gi
+    defaultRequest:
+      cpu: 500m
+      memory: 1Gi
+    type: Container
+  - max:
+      storage: 1Ti
+    min:
+      storage: 10Gi
+    type: PersistentVolumeClaim

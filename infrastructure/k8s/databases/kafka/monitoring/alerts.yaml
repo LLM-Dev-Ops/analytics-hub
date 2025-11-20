@@ -1,0 +1,272 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kafka-alerts
+  namespace: kafka
+  labels:
+    app: kafka
+    component: monitoring
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: kafka.cluster
+    interval: 30s
+    rules:
+    - alert: KafkaNoActiveController
+      expr: kafka_controller_kafkacontroller_activecontrollercount == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "No active Kafka controller"
+        description: "Kafka cluster has no active controller for more than 5 minutes. This indicates a serious cluster issue."
+
+    - alert: KafkaMultipleActiveControllers
+      expr: kafka_controller_kafkacontroller_activecontrollercount > 1
+      for: 1m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Multiple active Kafka controllers detected"
+        description: "More than one active controller detected. This is a split-brain scenario."
+
+    - alert: KafkaBrokerDown
+      expr: up{job="kafka-metrics"} == 0
+      for: 3m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Kafka broker {{ $labels.instance }} is down"
+        description: "Kafka broker {{ $labels.instance }} has been down for more than 3 minutes."
+
+    - alert: KafkaOfflinePartitions
+      expr: kafka_controller_kafkacontroller_offlinepartitionscount > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Kafka has offline partitions"
+        description: "Kafka cluster has {{ $value }} offline partitions for more than 5 minutes."
+
+    - alert: KafkaUnderReplicatedPartitions
+      expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "Kafka has under-replicated partitions"
+        description: "Broker {{ $labels.instance }} has {{ $value }} under-replicated partitions for more than 10 minutes."
+
+  - name: kafka.performance
+    interval: 30s
+    rules:
+    - alert: KafkaHighProducerLatency
+      expr: kafka_network_requestmetrics_requestqueuetimems{request="Produce",quantile="0.99"} > 1000
+      for: 5m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High Kafka producer latency"
+        description: "99th percentile producer latency is {{ $value }}ms on {{ $labels.instance }}"
+
+    - alert: KafkaHighConsumerLatency
+      expr: kafka_network_requestmetrics_requestqueuetimems{request="Fetch",quantile="0.99"} > 1000
+      for: 5m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High Kafka consumer latency"
+        description: "99th percentile consumer latency is {{ $value }}ms on {{ $labels.instance }}"
+
+    - alert: KafkaHighRequestQueueSize
+      expr: kafka_network_requestchannel_requestqueuesize > 100
+      for: 5m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High Kafka request queue size"
+        description: "Request queue size is {{ $value }} on {{ $labels.instance }}"
+
+    - alert: KafkaHighMessagesInRate
+      expr: rate(kafka_server_brokertopicmetrics_messagesinpersec_total[5m]) > 100000
+      for: 10m
+      labels:
+        severity: info
+        component: kafka
+      annotations:
+        summary: "Very high message ingestion rate"
+        description: "Messages in rate is {{ $value }} messages/sec on {{ $labels.instance }}"
+
+  - name: kafka.consumer
+    interval: 30s
+    rules:
+    - alert: KafkaConsumerLagHigh
+      expr: kafka_consumergroup_group_max_lag > 10000
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High consumer lag for group {{ $labels.consumergroup }}"
+        description: "Consumer group {{ $labels.consumergroup }} has a lag of {{ $value }} messages"
+
+    - alert: KafkaConsumerLagCritical
+      expr: kafka_consumergroup_group_max_lag > 100000
+      for: 5m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Critical consumer lag for group {{ $labels.consumergroup }}"
+        description: "Consumer group {{ $labels.consumergroup }} has a critical lag of {{ $value }} messages"
+
+    - alert: KafkaConsumerGroupNotConsuming
+      expr: rate(kafka_consumergroup_group_offset[5m]) == 0
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "Consumer group {{ $labels.consumergroup }} is not consuming"
+        description: "Consumer group {{ $labels.consumergroup }} has not consumed any messages for 10 minutes"
+
+  - name: kafka.storage
+    interval: 30s
+    rules:
+    - alert: KafkaDiskUsageHigh
+      expr: (kafka_log_log_size / (500 * 1024 * 1024 * 1024)) > 0.85
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High disk usage on Kafka broker"
+        description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+    - alert: KafkaDiskUsageCritical
+      expr: (kafka_log_log_size / (500 * 1024 * 1024 * 1024)) > 0.95
+      for: 5m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Critical disk usage on Kafka broker"
+        description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+    - alert: KafkaLogSegmentCountHigh
+      expr: kafka_log_log_numsegments > 1000
+      for: 30m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High log segment count"
+        description: "Topic {{ $labels.topic }} partition {{ $labels.partition }} has {{ $value }} log segments"
+
+  - name: kafka.replication
+    interval: 30s
+    rules:
+    - alert: KafkaISRShrink
+      expr: kafka_cluster_partition_insyncreplicascount < kafka_cluster_partition_replicascount
+      for: 5m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "ISR shrunk for partition"
+        description: "Topic {{ $labels.topic }} partition {{ $labels.partition }} has fewer in-sync replicas than configured"
+
+    - alert: KafkaReplicaLagHigh
+      expr: kafka_server_replicafetchermanager_maxlag > 10000
+      for: 5m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High replica lag"
+        description: "Replica lag is {{ $value }} messages on {{ $labels.instance }}"
+
+  - name: zookeeper.cluster
+    interval: 30s
+    rules:
+    - alert: ZookeeperDown
+      expr: up{job="zookeeper-metrics"} == 0
+      for: 3m
+      labels:
+        severity: critical
+        component: zookeeper
+      annotations:
+        summary: "Zookeeper instance {{ $labels.instance }} is down"
+        description: "Zookeeper instance {{ $labels.instance }} has been down for more than 3 minutes"
+
+    - alert: ZookeeperHighLatency
+      expr: zookeeper_avglatency > 100
+      for: 5m
+      labels:
+        severity: warning
+        component: zookeeper
+      annotations:
+        summary: "High Zookeeper latency"
+        description: "Average latency is {{ $value }}ms on {{ $labels.instance }}"
+
+    - alert: ZookeeperHighOutstandingRequests
+      expr: zookeeper_outstandingrequests > 10
+      for: 5m
+      labels:
+        severity: warning
+        component: zookeeper
+      annotations:
+        summary: "High outstanding requests in Zookeeper"
+        description: "Outstanding requests count is {{ $value }} on {{ $labels.instance }}"
+
+    - alert: ZookeeperNoQuorum
+      expr: count(up{job="zookeeper-metrics"} == 1) < 2
+      for: 1m
+      labels:
+        severity: critical
+        component: zookeeper
+      annotations:
+        summary: "Zookeeper has no quorum"
+        description: "Less than 2 Zookeeper instances are available. Quorum is lost."
+
+  - name: kafka.jvm
+    interval: 30s
+    rules:
+    - alert: KafkaHighHeapUsage
+      expr: java_lang_memory_heapmemoryusage_used / java_lang_memory_heapmemoryusage_max > 0.85
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High JVM heap usage on Kafka broker"
+        description: "Heap usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+    - alert: KafkaHighGCTime
+      expr: rate(java_lang_garbagecollector_collectiontime[5m]) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+        component: kafka
+      annotations:
+        summary: "High GC time on Kafka broker"
+        description: "GC is taking {{ $value | humanizePercentage }} of time on {{ $labels.instance }}"
+
+    - alert: KafkaThreadDeadlock
+      expr: java_lang_threading_deadlockedthreadcount > 0
+      for: 1m
+      labels:
+        severity: critical
+        component: kafka
+      annotations:
+        summary: "Thread deadlock detected"
+        description: "{{ $value }} deadlocked threads detected on {{ $labels.instance }}"

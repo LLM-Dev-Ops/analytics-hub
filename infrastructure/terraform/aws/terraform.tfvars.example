@@ -1,0 +1,115 @@
+# AWS Region Configuration
+aws_region = "us-east-1"
+
+# Project Configuration
+project_name = "llm-analytics-hub"
+environment  = "prod"
+owner        = "platform-team"
+cost_center  = "engineering"
+
+# VPC Configuration
+vpc_cidr             = "10.0.0.0/16"
+enable_nat_gateway   = true
+single_nat_gateway   = false  # Set to true for non-prod to save costs
+enable_dns_hostnames = true
+enable_dns_support   = true
+enable_vpn_gateway   = false
+
+# EKS Cluster Configuration
+kubernetes_version                   = "1.28"
+cluster_endpoint_private_access      = true
+cluster_endpoint_public_access       = true
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]  # Restrict this in production
+enable_cluster_encryption            = true
+
+cluster_enabled_log_types = [
+  "api",
+  "audit",
+  "authenticator",
+  "controllerManager",
+  "scheduler"
+]
+cluster_log_retention_days = 30
+
+# System Node Group Configuration
+system_node_group_name   = "system"
+system_node_instance_types = ["m5.xlarge"]
+system_node_capacity_type  = "ON_DEMAND"
+system_node_desired_size   = 3
+system_node_min_size       = 2
+system_node_max_size       = 4
+system_node_disk_size      = 100
+
+# Application Node Group Configuration
+app_node_group_name   = "application"
+app_node_instance_types = ["m5.2xlarge", "m5a.2xlarge", "m5n.2xlarge"]
+app_node_capacity_type  = "SPOT"  # Use ON_DEMAND for production stability
+app_node_desired_size   = 5
+app_node_min_size       = 3
+app_node_max_size       = 10
+app_node_disk_size      = 200
+
+# Database Node Group Configuration
+db_node_group_name     = "database"
+db_node_instance_types = ["r5.2xlarge"]
+db_node_capacity_type  = "ON_DEMAND"
+db_node_desired_size   = 4
+db_node_min_size       = 3
+db_node_max_size       = 6
+db_node_disk_size      = 500
+db_node_disk_type      = "gp3"
+db_node_disk_iops      = 3000
+db_node_disk_throughput = 125
+
+# Monitoring Configuration
+enable_container_insights     = true
+enable_vpc_flow_logs          = true
+vpc_flow_logs_retention_days  = 14
+
+# Storage Configuration
+enable_ebs_csi_driver        = true
+enable_efs_csi_driver        = false
+ebs_snapshot_retention_days  = 30
+
+# Security Configuration
+enable_irsa                = true
+enable_pod_security_policy = false
+allowed_cidr_blocks        = []  # Add your office/VPN CIDR blocks here
+
+# VPC Endpoints Configuration
+enable_vpc_endpoints = true
+vpc_endpoints = [
+  "ec2",
+  "ecr.api",
+  "ecr.dkr",
+  "s3",
+  "logs",
+  "sts",
+  "elasticloadbalancing",
+  "autoscaling"
+]
+
+# IAM Mappings (Add additional IAM users/roles that need cluster access)
+# map_roles = [
+#   {
+#     rolearn  = "arn:aws:iam::123456789012:role/DevOpsRole"
+#     username = "devops"
+#     groups   = ["system:masters"]
+#   }
+# ]
+
+# map_users = [
+#   {
+#     userarn  = "arn:aws:iam::123456789012:user/admin"
+#     username = "admin"
+#     groups   = ["system:masters"]
+#   }
+# ]
+
+# Additional Tags
+tags = {
+  Terraform   = "true"
+  Repository  = "llm-analytics-hub"
+  Team        = "Platform"
+  Application = "LLM Analytics Hub"
+}

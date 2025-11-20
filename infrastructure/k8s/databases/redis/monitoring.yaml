@@ -1,0 +1,374 @@
+---
+# ServiceMonitor for Redis Cluster
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-cluster
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cluster
+  namespaceSelector:
+    matchNames:
+    - redis-system
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+    relabelings:
+    - sourceLabels:
+      - __meta_kubernetes_pod_name
+      targetLabel: pod
+    - sourceLabels:
+      - __meta_kubernetes_pod_node_name
+      targetLabel: node
+    - sourceLabels:
+      - __meta_kubernetes_namespace
+      targetLabel: namespace
+
+---
+# ServiceMonitor for Redis Sentinel
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-sentinel
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-sentinel
+      app.kubernetes.io/component: sentinel
+  namespaceSelector:
+    matchNames:
+    - redis-system
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+    relabelings:
+    - sourceLabels:
+      - __meta_kubernetes_pod_name
+      targetLabel: pod
+    - sourceLabels:
+      - __meta_kubernetes_pod_node_name
+      targetLabel: node
+    - sourceLabels:
+      - __meta_kubernetes_namespace
+      targetLabel: namespace
+
+---
+# PrometheusRule for Redis Alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redis-alerts
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: alerts
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: redis-cluster
+    interval: 30s
+    rules:
+    # Cluster Health Alerts
+    - alert: RedisClusterDown
+      expr: redis_up == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis instance is down"
+        description: "Redis instance {{ $labels.instance }} has been down for more than 5 minutes."
+
+    - alert: RedisClusterStateNotOk
+      expr: redis_cluster_state != 1
+      for: 5m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis cluster state is not OK"
+        description: "Redis cluster on {{ $labels.instance }} is in degraded state."
+
+    - alert: RedisClusterSlotsNotCovered
+      expr: redis_cluster_slots_ok < 16384
+      for: 5m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis cluster slots not fully covered"
+        description: "Redis cluster has {{ $value }} slots covered, expected 16384."
+
+    # Memory Alerts
+    - alert: RedisMemoryHigh
+      expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis memory usage is high"
+        description: "Redis instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of available memory."
+
+    - alert: RedisMemoryCritical
+      expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
+      for: 2m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis memory usage is critical"
+        description: "Redis instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of available memory."
+
+    - alert: RedisMemoryFragmentationHigh
+      expr: redis_mem_fragmentation_ratio > 1.5
+      for: 10m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis memory fragmentation is high"
+        description: "Redis instance {{ $labels.instance }} has memory fragmentation ratio of {{ $value }}."
+
+    # Eviction Alerts
+    - alert: RedisKeyEvictionHigh
+      expr: rate(redis_evicted_keys_total[5m]) > 100
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "High key eviction rate detected"
+        description: "Redis instance {{ $labels.instance }} is evicting {{ $value }} keys/second."
+
+    # Replication Alerts
+    - alert: RedisReplicationDown
+      expr: redis_connected_slaves < 1
+      for: 5m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis master has no connected replicas"
+        description: "Redis master {{ $labels.instance }} has no connected replicas for more than 5 minutes."
+
+    - alert: RedisReplicationLagHigh
+      expr: redis_slave_repl_offset - redis_master_repl_offset > 10000000
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis replication lag is high"
+        description: "Redis replica {{ $labels.instance }} is lagging {{ $value }} bytes behind master."
+
+    - alert: RedisReplicationBroken
+      expr: redis_master_link_up == 0
+      for: 2m
+      labels:
+        severity: critical
+        component: redis
+      annotations:
+        summary: "Redis replication link is down"
+        description: "Redis replica {{ $labels.instance }} has lost connection to master."
+
+    # Connection Alerts
+    - alert: RedisConnectionsHigh
+      expr: redis_connected_clients / redis_config_maxclients > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis connection usage is high"
+        description: "Redis instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of max connections."
+
+    - alert: RedisRejectedConnections
+      expr: rate(redis_rejected_connections_total[5m]) > 0
+      for: 1m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis is rejecting connections"
+        description: "Redis instance {{ $labels.instance }} is rejecting {{ $value }} connections/second."
+
+    # Performance Alerts
+    - alert: RedisSlowQueries
+      expr: rate(redis_slowlog_length[5m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "High rate of slow queries"
+        description: "Redis instance {{ $labels.instance }} has {{ $value }} slow queries/second."
+
+    - alert: RedisCommandLatencyHigh
+      expr: redis_commands_duration_seconds_total / redis_commands_processed_total > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis command latency is high"
+        description: "Redis instance {{ $labels.instance }} has average command latency of {{ $value }}s."
+
+    # Persistence Alerts
+    - alert: RedisRDBSaveFailed
+      expr: redis_rdb_last_save_timestamp_seconds < (time() - 86400)
+      for: 30m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis RDB save has not succeeded in 24 hours"
+        description: "Redis instance {{ $labels.instance }} has not completed an RDB save in 24 hours."
+
+    - alert: RedisAOFRewriteFailed
+      expr: redis_aof_last_rewrite_duration_sec > 600
+      for: 5m
+      labels:
+        severity: warning
+        component: redis
+      annotations:
+        summary: "Redis AOF rewrite took too long"
+        description: "Redis instance {{ $labels.instance }} AOF rewrite took {{ $value }}s."
+
+    # Sentinel Alerts
+    - alert: SentinelDown
+      expr: up{job="redis-sentinel"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: redis-sentinel
+      annotations:
+        summary: "Redis Sentinel is down"
+        description: "Redis Sentinel instance {{ $labels.instance }} has been down for more than 5 minutes."
+
+    - alert: SentinelQuorumLost
+      expr: count(up{job="redis-sentinel"} == 1) < 2
+      for: 2m
+      labels:
+        severity: critical
+        component: redis-sentinel
+      annotations:
+        summary: "Redis Sentinel quorum lost"
+        description: "Less than 2 Sentinel instances are up, quorum is lost."
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-dashboard
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: dashboard
+    grafana_dashboard: "1"
+data:
+  redis-cluster-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Redis Cluster - LLM Analytics Hub",
+        "tags": ["redis", "cluster", "cache"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Cluster Health",
+            "targets": [
+              {
+                "expr": "redis_cluster_state",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Memory Usage",
+            "targets": [
+              {
+                "expr": "redis_memory_used_bytes",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Connected Clients",
+            "targets": [
+              {
+                "expr": "redis_connected_clients",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Commands Per Second",
+            "targets": [
+              {
+                "expr": "rate(redis_commands_processed_total[5m])",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Hit Rate",
+            "targets": [
+              {
+                "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Evicted Keys",
+            "targets": [
+              {
+                "expr": "rate(redis_evicted_keys_total[5m])",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Network I/O",
+            "targets": [
+              {
+                "expr": "rate(redis_net_input_bytes_total[5m])",
+                "legendFormat": "In - {{ instance }}"
+              },
+              {
+                "expr": "rate(redis_net_output_bytes_total[5m])",
+                "legendFormat": "Out - {{ instance }}"
+              }
+            ]
+          },
+          {
+            "title": "Replication Lag",
+            "targets": [
+              {
+                "expr": "redis_master_repl_offset - redis_slave_repl_offset",
+                "legendFormat": "{{ instance }}"
+              }
+            ]
+          }
+        ]
+      }
+    }

@@ -1,0 +1,498 @@
+---
+# PostgreSQL Exporter Queries
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-exporter-config
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+    app.kubernetes.io/component: monitoring
+data:
+  queries.yaml: |
+    # TimescaleDB specific metrics
+    pg_timescaledb_hypertable_size:
+      query: |
+        SELECT
+          hypertable_schema,
+          hypertable_name,
+          pg_size_pretty(total_bytes) as size,
+          total_bytes
+        FROM timescaledb_information.hypertable
+      metrics:
+        - hypertable_schema:
+            usage: "LABEL"
+            description: "Schema of the hypertable"
+        - hypertable_name:
+            usage: "LABEL"
+            description: "Name of the hypertable"
+        - total_bytes:
+            usage: "GAUGE"
+            description: "Total size of hypertable in bytes"
+
+    pg_timescaledb_chunk_stats:
+      query: |
+        SELECT
+          hypertable_schema,
+          hypertable_name,
+          COUNT(*) as chunk_count,
+          SUM(total_bytes) as total_size
+        FROM timescaledb_information.chunks
+        GROUP BY hypertable_schema, hypertable_name
+      metrics:
+        - hypertable_schema:
+            usage: "LABEL"
+            description: "Schema of the hypertable"
+        - hypertable_name:
+            usage: "LABEL"
+            description: "Name of the hypertable"
+        - chunk_count:
+            usage: "GAUGE"
+            description: "Number of chunks"
+        - total_size:
+            usage: "GAUGE"
+            description: "Total size of all chunks"
+
+    pg_timescaledb_compression_stats:
+      query: |
+        SELECT
+          hypertable_schema,
+          hypertable_name,
+          total_chunks,
+          compressed_chunks,
+          CASE WHEN total_chunks > 0 THEN (compressed_chunks::float / total_chunks::float) * 100 ELSE 0 END as compression_ratio
+        FROM timescaledb_information.compression_settings
+      metrics:
+        - hypertable_schema:
+            usage: "LABEL"
+            description: "Schema of the hypertable"
+        - hypertable_name:
+            usage: "LABEL"
+            description: "Name of the hypertable"
+        - total_chunks:
+            usage: "GAUGE"
+            description: "Total number of chunks"
+        - compressed_chunks:
+            usage: "GAUGE"
+            description: "Number of compressed chunks"
+        - compression_ratio:
+            usage: "GAUGE"
+            description: "Compression ratio percentage"
+
+    # Replication lag
+    pg_replication_lag:
+      query: |
+        SELECT
+          client_addr,
+          application_name,
+          state,
+          sync_state,
+          EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) as lag_seconds
+        FROM pg_stat_replication
+      metrics:
+        - client_addr:
+            usage: "LABEL"
+            description: "Replica IP address"
+        - application_name:
+            usage: "LABEL"
+            description: "Application name"
+        - state:
+            usage: "LABEL"
+            description: "Replication state"
+        - sync_state:
+            usage: "LABEL"
+            description: "Synchronization state"
+        - lag_seconds:
+            usage: "GAUGE"
+            description: "Replication lag in seconds"
+
+    # Connection stats
+    pg_connection_stats:
+      query: |
+        SELECT
+          datname,
+          state,
+          COUNT(*) as connections
+        FROM pg_stat_activity
+        WHERE datname IS NOT NULL
+        GROUP BY datname, state
+      metrics:
+        - datname:
+            usage: "LABEL"
+            description: "Database name"
+        - state:
+            usage: "LABEL"
+            description: "Connection state"
+        - connections:
+            usage: "GAUGE"
+            description: "Number of connections"
+
+    # Slow queries
+    pg_slow_queries:
+      query: |
+        SELECT
+          query,
+          calls,
+          total_time,
+          mean_time,
+          max_time
+        FROM pg_stat_statements
+        WHERE mean_time > 1000
+        ORDER BY mean_time DESC
+        LIMIT 20
+      metrics:
+        - query:
+            usage: "LABEL"
+            description: "SQL query"
+        - calls:
+            usage: "COUNTER"
+            description: "Number of times executed"
+        - total_time:
+            usage: "COUNTER"
+            description: "Total time spent in milliseconds"
+        - mean_time:
+            usage: "GAUGE"
+            description: "Mean execution time in milliseconds"
+        - max_time:
+            usage: "GAUGE"
+            description: "Maximum execution time in milliseconds"
+
+    # Table bloat
+    pg_table_bloat:
+      query: |
+        SELECT
+          schemaname,
+          tablename,
+          pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
+          n_dead_tup,
+          n_live_tup,
+          CASE WHEN n_live_tup > 0 THEN (n_dead_tup::float / n_live_tup::float) * 100 ELSE 0 END as bloat_ratio
+        FROM pg_stat_user_tables
+        WHERE n_dead_tup > 1000
+        ORDER BY n_dead_tup DESC
+      metrics:
+        - schemaname:
+            usage: "LABEL"
+            description: "Schema name"
+        - tablename:
+            usage: "LABEL"
+            description: "Table name"
+        - n_dead_tup:
+            usage: "GAUGE"
+            description: "Number of dead tuples"
+        - n_live_tup:
+            usage: "GAUGE"
+            description: "Number of live tuples"
+        - bloat_ratio:
+            usage: "GAUGE"
+            description: "Bloat ratio percentage"
+
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: timescaledb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+      app.kubernetes.io/component: database
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+
+---
+# ServiceMonitor for PgBouncer
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pgbouncer
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+      app.kubernetes.io/component: connection-pooling
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+
+---
+# PrometheusRule for Alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: timescaledb-alerts
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: timescaledb.rules
+    interval: 30s
+    rules:
+    # Database is down
+    - alert: TimescaleDBDown
+      expr: up{job="timescaledb"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        component: database
+      annotations:
+        summary: "TimescaleDB instance is down"
+        description: "TimescaleDB instance {{ $labels.pod }} has been down for more than 1 minute"
+
+    # High replication lag
+    - alert: TimescaleDBReplicationLag
+      expr: pg_replication_lag_seconds > 60
+      for: 5m
+      labels:
+        severity: warning
+        component: replication
+      annotations:
+        summary: "High replication lag detected"
+        description: "Replication lag on {{ $labels.pod }} is {{ $value }} seconds"
+
+    # Critical replication lag
+    - alert: TimescaleDBReplicationLagCritical
+      expr: pg_replication_lag_seconds > 300
+      for: 2m
+      labels:
+        severity: critical
+        component: replication
+      annotations:
+        summary: "Critical replication lag detected"
+        description: "Replication lag on {{ $labels.pod }} is {{ $value }} seconds"
+
+    # Too many connections
+    - alert: TimescaleDBTooManyConnections
+      expr: sum(pg_stat_activity_count) by (pod) > 180
+      for: 5m
+      labels:
+        severity: warning
+        component: connections
+      annotations:
+        summary: "Too many database connections"
+        description: "{{ $labels.pod }} has {{ $value }} connections (threshold: 180)"
+
+    # Connection limit approaching
+    - alert: TimescaleDBConnectionsNearLimit
+      expr: sum(pg_stat_activity_count) by (pod) > 160
+      for: 10m
+      labels:
+        severity: warning
+        component: connections
+      annotations:
+        summary: "Database connections approaching limit"
+        description: "{{ $labels.pod }} has {{ $value }} connections (max: 200)"
+
+    # Disk space warning
+    - alert: TimescaleDBDiskSpaceWarning
+      expr: (kubelet_volume_stats_available_bytes{persistentvolumeclaim=~"data-timescaledb-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"data-timescaledb-.*"}) < 0.20
+      for: 5m
+      labels:
+        severity: warning
+        component: storage
+      annotations:
+        summary: "Low disk space on TimescaleDB volume"
+        description: "Volume {{ $labels.persistentvolumeclaim }} has less than 20% free space"
+
+    # Disk space critical
+    - alert: TimescaleDBDiskSpaceCritical
+      expr: (kubelet_volume_stats_available_bytes{persistentvolumeclaim=~"data-timescaledb-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"data-timescaledb-.*"}) < 0.10
+      for: 2m
+      labels:
+        severity: critical
+        component: storage
+      annotations:
+        summary: "Critical disk space on TimescaleDB volume"
+        description: "Volume {{ $labels.persistentvolumeclaim }} has less than 10% free space"
+
+    # High query execution time
+    - alert: TimescaleDBSlowQueries
+      expr: rate(pg_stat_statements_mean_time_seconds[5m]) > 5
+      for: 10m
+      labels:
+        severity: warning
+        component: performance
+      annotations:
+        summary: "Slow queries detected"
+        description: "Average query time is {{ $value }}s on {{ $labels.pod }}"
+
+    # Deadlocks detected
+    - alert: TimescaleDBDeadlocks
+      expr: rate(pg_stat_database_deadlocks[5m]) > 0
+      for: 1m
+      labels:
+        severity: warning
+        component: performance
+      annotations:
+        summary: "Database deadlocks detected"
+        description: "{{ $value }} deadlocks/sec on {{ $labels.datname }}"
+
+    # High table bloat
+    - alert: TimescaleDBHighTableBloat
+      expr: pg_table_bloat_ratio > 50
+      for: 30m
+      labels:
+        severity: warning
+        component: maintenance
+      annotations:
+        summary: "High table bloat detected"
+        description: "Table {{ $labels.schemaname }}.{{ $labels.tablename }} has {{ $value }}% bloat"
+
+    # Backup failed
+    - alert: TimescaleDBBackupFailed
+      expr: kube_job_status_failed{job_name=~"timescaledb-backup-.*"} > 0
+      for: 1m
+      labels:
+        severity: critical
+        component: backup
+      annotations:
+        summary: "TimescaleDB backup failed"
+        description: "Backup job {{ $labels.job_name }} has failed"
+
+    # No recent backup
+    - alert: TimescaleDBNoRecentBackup
+      expr: time() - kube_job_status_completion_time{job_name=~"timescaledb-backup-full-.*"} > 86400
+      for: 1h
+      labels:
+        severity: warning
+        component: backup
+      annotations:
+        summary: "No recent full backup"
+        description: "Last full backup was more than 24 hours ago"
+
+    # Pod not ready
+    - alert: TimescaleDBPodNotReady
+      expr: kube_pod_status_ready{pod=~"timescaledb-.*", condition="true"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        component: availability
+      annotations:
+        summary: "TimescaleDB pod not ready"
+        description: "Pod {{ $labels.pod }} has been not ready for 5 minutes"
+
+    # High CPU usage
+    - alert: TimescaleDBHighCPU
+      expr: rate(container_cpu_usage_seconds_total{pod=~"timescaledb-.*", container="timescaledb"}[5m]) > 0.8
+      for: 10m
+      labels:
+        severity: warning
+        component: performance
+      annotations:
+        summary: "High CPU usage on TimescaleDB"
+        description: "Pod {{ $labels.pod }} CPU usage is {{ $value | humanizePercentage }}"
+
+    # High memory usage
+    - alert: TimescaleDBHighMemory
+      expr: container_memory_working_set_bytes{pod=~"timescaledb-.*", container="timescaledb"} / container_spec_memory_limit_bytes{pod=~"timescaledb-.*", container="timescaledb"} > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        component: performance
+      annotations:
+        summary: "High memory usage on TimescaleDB"
+        description: "Pod {{ $labels.pod }} memory usage is {{ $value | humanizePercentage }}"
+
+    # WAL size growing
+    - alert: TimescaleDBWALSizeGrowing
+      expr: pg_wal_size_bytes > 8589934592  # 8GB
+      for: 30m
+      labels:
+        severity: warning
+        component: storage
+      annotations:
+        summary: "WAL size growing on TimescaleDB"
+        description: "WAL size on {{ $labels.pod }} is {{ $value | humanize1024 }}"
+
+    # Compression not working
+    - alert: TimescaleDBCompressionNotWorking
+      expr: pg_timescaledb_compression_ratio < 10
+      for: 24h
+      labels:
+        severity: warning
+        component: storage
+      annotations:
+        summary: "TimescaleDB compression ratio is low"
+        description: "Compression ratio for {{ $labels.hypertable_schema }}.{{ $labels.hypertable_name }} is {{ $value }}%"
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timescaledb-dashboard
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: monitoring
+    grafana_dashboard: "1"
+data:
+  timescaledb-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "TimescaleDB Overview",
+        "tags": ["timescaledb", "postgresql", "database"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Database Connections",
+            "targets": [
+              {
+                "expr": "sum(pg_stat_activity_count) by (pod)"
+              }
+            ]
+          },
+          {
+            "title": "Replication Lag",
+            "targets": [
+              {
+                "expr": "pg_replication_lag_seconds"
+              }
+            ]
+          },
+          {
+            "title": "Query Rate",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_xact_commit[5m])"
+              }
+            ]
+          },
+          {
+            "title": "Disk Usage",
+            "targets": [
+              {
+                "expr": "kubelet_volume_stats_used_bytes{persistentvolumeclaim=~'data-timescaledb-.*'} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~'data-timescaledb-.*'}"
+              }
+            ]
+          }
+        ]
+      }
+    }

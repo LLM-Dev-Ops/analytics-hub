@@ -1,0 +1,257 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-topics
+  namespace: kafka
+  labels:
+    app: kafka
+    component: topics
+data:
+  # Topic configurations for LLM Analytics Hub
+  topics.json: |
+    {
+      "topics": [
+        {
+          "name": "llm-events",
+          "partitions": 32,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "604800000",
+            "retention.bytes": "536870912000",
+            "segment.ms": "86400000",
+            "segment.bytes": "1073741824",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2",
+            "max.message.bytes": "10485760"
+          }
+        },
+        {
+          "name": "llm-metrics",
+          "partitions": 32,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "2592000000",
+            "retention.bytes": "1073741824000",
+            "segment.ms": "86400000",
+            "segment.bytes": "1073741824",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-analytics",
+          "partitions": 16,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "604800000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-traces",
+          "partitions": 32,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "604800000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-errors",
+          "partitions": 16,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "2592000000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-audit",
+          "partitions": 8,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "compact,delete",
+            "retention.ms": "7776000000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2",
+            "min.compaction.lag.ms": "86400000"
+          }
+        },
+        {
+          "name": "llm-aggregated-metrics",
+          "partitions": 16,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "2592000000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-alerts",
+          "partitions": 8,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "604800000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-usage-stats",
+          "partitions": 16,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "compact,delete",
+            "retention.ms": "2592000000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        },
+        {
+          "name": "llm-model-performance",
+          "partitions": 16,
+          "replicationFactor": 3,
+          "config": {
+            "cleanup.policy": "delete",
+            "retention.ms": "2592000000",
+            "compression.type": "lz4",
+            "min.insync.replicas": "2"
+          }
+        }
+      ]
+    }
+
+  create-topics.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Creating Kafka topics..."
+
+    # Wait for Kafka to be ready
+    while ! kafka-broker-api-versions.sh --bootstrap-server kafka:9092 > /dev/null 2>&1; do
+      echo "Waiting for Kafka to be ready..."
+      sleep 5
+    done
+
+    # Parse topics from JSON and create them
+    jq -r '.topics[] | @json' /config/topics.json | while read -r topic; do
+      TOPIC_NAME=$(echo "$topic" | jq -r '.name')
+      PARTITIONS=$(echo "$topic" | jq -r '.partitions')
+      REPLICATION=$(echo "$topic" | jq -r '.replicationFactor')
+
+      echo "Creating topic: $TOPIC_NAME (partitions: $PARTITIONS, replication: $REPLICATION)"
+
+      # Create topic
+      kafka-topics.sh --create \
+        --bootstrap-server kafka:9092 \
+        --topic "$TOPIC_NAME" \
+        --partitions "$PARTITIONS" \
+        --replication-factor "$REPLICATION" \
+        --if-not-exists
+
+      # Configure topic
+      CONFIG_ARGS=""
+      echo "$topic" | jq -r '.config | to_entries[] | "\(.key)=\(.value)"' | while read -r config; do
+        CONFIG_ARGS="$CONFIG_ARGS --add-config $config"
+      done
+
+      if [ -n "$CONFIG_ARGS" ]; then
+        kafka-configs.sh --alter \
+          --bootstrap-server kafka:9092 \
+          --entity-type topics \
+          --entity-name "$TOPIC_NAME" \
+          $CONFIG_ARGS
+      fi
+
+      echo "Topic $TOPIC_NAME created and configured successfully"
+    done
+
+    echo "All topics created successfully"
+
+  list-topics.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Listing Kafka topics..."
+    kafka-topics.sh --list --bootstrap-server kafka:9092
+
+  describe-topics.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Describing Kafka topics..."
+    kafka-topics.sh --describe --bootstrap-server kafka:9092
+
+  delete-topics.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "WARNING: This will delete all LLM Analytics topics!"
+    read -p "Are you sure? (yes/no): " confirm
+
+    if [ "$confirm" != "yes" ]; then
+      echo "Aborted"
+      exit 0
+    fi
+
+    # Delete all llm- prefixed topics
+    kafka-topics.sh --list --bootstrap-server kafka:9092 | grep "^llm-" | while read -r topic; do
+      echo "Deleting topic: $topic"
+      kafka-topics.sh --delete --bootstrap-server kafka:9092 --topic "$topic"
+    done
+
+    echo "All topics deleted"
+
+---
+# Job to create topics on startup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-create-topics
+  namespace: kafka
+  labels:
+    app: kafka
+    component: topics
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: topics
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: create-topics
+        image: confluentinc/cp-kafka:7.5.3
+        command:
+        - /bin/bash
+        - /scripts/create-topics.sh
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+        - name: config
+          mountPath: /config
+        env:
+        - name: KAFKA_OPTS
+          value: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+      volumes:
+      - name: scripts
+        configMap:
+          name: kafka-topics
+          defaultMode: 0755
+      - name: config
+        configMap:
+          name: kafka-topics

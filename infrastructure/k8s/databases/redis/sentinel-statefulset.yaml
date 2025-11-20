@@ -1,0 +1,279 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-sentinel-config
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel
+data:
+  sentinel.conf: |
+    # Redis Sentinel Configuration
+    port 26379
+    dir /data
+
+    # Sentinel monitor configuration
+    # Note: This will be updated by the init container with actual master IPs
+    sentinel monitor redis-cluster 127.0.0.1 6379 2
+    sentinel auth-pass redis-cluster REDIS_PASSWORD
+
+    # Failover configuration
+    sentinel down-after-milliseconds redis-cluster 30000
+    sentinel parallel-syncs redis-cluster 1
+    sentinel failover-timeout redis-cluster 180000
+
+    # Notification scripts (optional)
+    # sentinel notification-script redis-cluster /scripts/notify.sh
+    # sentinel client-reconfig-script redis-cluster /scripts/reconfig.sh
+
+    # Sentinel configuration
+    sentinel deny-scripts-reconfig yes
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
+
+    # Logging
+    loglevel notice
+    logfile ""
+
+  init-sentinel.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Initializing Sentinel configuration..."
+
+    # Copy base config
+    cp /config/sentinel.conf /etc/sentinel/sentinel.conf
+
+    # Replace password
+    if [ -f /secrets/password ]; then
+      REDIS_PASSWORD=$(cat /secrets/password)
+      sed -i "s/REDIS_PASSWORD/${REDIS_PASSWORD}/g" /etc/sentinel/sentinel.conf
+    fi
+
+    # Discover Redis masters
+    echo "Discovering Redis cluster masters..."
+
+    # Wait for Redis pods to be ready
+    sleep 10
+
+    # Get cluster info and configure sentinels
+    # In production, you would query the cluster and configure sentinel monitors
+    # For now, we'll use the first three pods as initial masters
+
+    echo "Sentinel configuration initialized"
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-sentinel
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel
+    app.kubernetes.io/version: "7.2"
+spec:
+  serviceName: redis-sentinel
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-sentinel
+      app.kubernetes.io/component: sentinel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-sentinel
+        app.kubernetes.io/component: sentinel
+        app.kubernetes.io/version: "7.2"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9355"
+    spec:
+      serviceAccountName: redis
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Pod Anti-Affinity
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - redis-sentinel
+            topologyKey: kubernetes.io/hostname
+
+      initContainers:
+      - name: config-init
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        command:
+        - /bin/sh
+        - /config/init-sentinel.sh
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: sentinel-config
+          mountPath: /etc/sentinel
+        - name: redis-auth
+          mountPath: /secrets
+          readOnly: true
+
+      containers:
+      - name: sentinel
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        command:
+        - redis-sentinel
+        - /etc/sentinel/sentinel.conf
+        ports:
+        - name: sentinel
+          containerPort: 26379
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-auth
+              key: password
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: 256Mi
+          limits:
+            cpu: "200m"
+            memory: 512Mi
+
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -p
+            - "26379"
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -p
+            - "26379"
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: sentinel-config
+          mountPath: /etc/sentinel
+        - name: redis-auth
+          mountPath: /secrets
+          readOnly: true
+
+      # Sentinel Exporter for Prometheus
+      - name: sentinel-exporter
+        image: oliver006/redis_exporter:v1.55.0-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - name: metrics
+          containerPort: 9355
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:26379"
+        - name: REDIS_EXPORTER_IS_SENTINEL
+          value: "true"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: 64Mi
+          limits:
+            cpu: "100m"
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9355
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9355
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+      volumes:
+      - name: config
+        configMap:
+          name: redis-sentinel-config
+          defaultMode: 0755
+      - name: sentinel-config
+        emptyDir: {}
+      - name: redis-auth
+        secret:
+          secretName: redis-auth
+
+      terminationGracePeriodSeconds: 30
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: redis-sentinel
+        app.kubernetes.io/component: storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 10Gi

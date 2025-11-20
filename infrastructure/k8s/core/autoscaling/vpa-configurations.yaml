@@ -1,0 +1,163 @@
+---
+# VerticalPodAutoscaler for LLM Analytics API
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: llm-analytics-api-vpa
+  namespace: llm-analytics
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-analytics-api
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 3
+  resourcePolicy:
+    containerPolicies:
+    - containerName: api
+      minAllowed:
+        cpu: 100m
+        memory: 256Mi
+      maxAllowed:
+        cpu: 4000m
+        memory: 8Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto
+---
+# VPA for Database (TimescaleDB)
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: timescaledb-vpa
+  namespace: llm-analytics
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: timescaledb
+  updatePolicy:
+    updateMode: "Initial"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: timescaledb
+      minAllowed:
+        cpu: 1000m
+        memory: 2Gi
+      maxAllowed:
+        cpu: 8000m
+        memory: 32Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto
+---
+# VPA for Redis
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: redis-vpa
+  namespace: llm-analytics
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: redis
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: redis
+      minAllowed:
+        cpu: 500m
+        memory: 1Gi
+      maxAllowed:
+        cpu: 4000m
+        memory: 16Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto
+---
+# VPA for Kafka
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: kafka-vpa
+  namespace: llm-analytics
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: kafka
+  updatePolicy:
+    updateMode: "Initial"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: kafka
+      minAllowed:
+        cpu: 1000m
+        memory: 2Gi
+      maxAllowed:
+        cpu: 8000m
+        memory: 32Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto
+---
+# VPA for Prometheus
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: prometheus-vpa
+  namespace: monitoring
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: prometheus-kube-prometheus-prometheus
+  updatePolicy:
+    updateMode: "Initial"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: prometheus
+      minAllowed:
+        cpu: 2000m
+        memory: 8Gi
+      maxAllowed:
+        cpu: 8000m
+        memory: 32Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto
+---
+# VPA for Loki Ingester
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: loki-ingester-vpa
+  namespace: logging
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: loki-ingester
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: ingester
+      minAllowed:
+        cpu: 1000m
+        memory: 2Gi
+      maxAllowed:
+        cpu: 4000m
+        memory: 8Gi
+      controlledResources:
+      - cpu
+      - memory
+      mode: Auto

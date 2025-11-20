@@ -1,0 +1,221 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-network-policy
+  namespace: kafka
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow internal Kafka traffic
+  - from:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9094
+
+  # Allow from application pods
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: llm-analytics
+    ports:
+    - protocol: TCP
+      port: 9092
+
+  # Allow from monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 7071
+    - protocol: TCP
+      port: 9999
+
+  # Allow from same namespace for metrics
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 7071
+    - protocol: TCP
+      port: 9999
+
+  egress:
+  # Allow to Zookeeper
+  - to:
+    - podSelector:
+        matchLabels:
+          app: zookeeper
+    ports:
+    - protocol: TCP
+      port: 2181
+
+  # Allow to other Kafka brokers
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9094
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow external connections for replication
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 9094
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zookeeper-network-policy
+  namespace: kafka
+spec:
+  podSelector:
+    matchLabels:
+      app: zookeeper
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from Kafka brokers
+  - from:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 2181
+
+  # Allow from other Zookeeper nodes
+  - from:
+    - podSelector:
+        matchLabels:
+          app: zookeeper
+    ports:
+    - protocol: TCP
+      port: 2181
+    - protocol: TCP
+      port: 2888
+    - protocol: TCP
+      port: 3888
+
+  # Allow from monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 7070
+
+  # Allow from same namespace for metrics
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 7070
+
+  egress:
+  # Allow to other Zookeeper nodes
+  - to:
+    - podSelector:
+        matchLabels:
+          app: zookeeper
+    ports:
+    - protocol: TCP
+      port: 2181
+    - protocol: TCP
+      port: 2888
+    - protocol: TCP
+      port: 3888
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Network policy for Kafka lag exporter
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-lag-exporter-policy
+  namespace: kafka
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka-lag-exporter
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from monitoring/Prometheus
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  egress:
+  # Allow to Kafka
+  - to:
+    - podSelector:
+        matchLabels:
+          app: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Default deny all ingress and egress (uncomment for maximum security)
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: default-deny-all
+#   namespace: kafka
+# spec:
+#   podSelector: {}
+#   policyTypes:
+#   - Ingress
+#   - Egress

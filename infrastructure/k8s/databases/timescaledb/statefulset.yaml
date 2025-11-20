@@ -1,0 +1,439 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: llm-analytics-hub
+    app.kubernetes.io/version: "15.5-ts2.13"
+spec:
+  serviceName: timescaledb-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+      app.kubernetes.io/component: database
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: llm-analytics-hub
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Security Context
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+        fsGroupChangePolicy: "OnRootMismatch"
+
+      # High Availability: Distribute pods across nodes/zones
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - timescaledb
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - timescaledb
+              topologyKey: topology.kubernetes.io/zone
+
+      # Service Account
+      serviceAccountName: timescaledb
+
+      # Init Containers
+      initContainers:
+      - name: init-permissions
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          chown -R 999:999 /var/lib/postgresql/data
+          chown -R 999:999 /var/lib/postgresql/wal
+          chown -R 999:999 /backup
+          chmod 700 /var/lib/postgresql/data
+          chmod 700 /var/lib/postgresql/wal
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: wal
+          mountPath: /var/lib/postgresql/wal
+        - name: backup
+          mountPath: /backup
+        securityContext:
+          runAsUser: 0
+
+      - name: init-config
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          cp /config/postgresql.conf /tmp/postgresql.conf
+          cp /config/pg_hba.conf /tmp/pg_hba.conf
+          cp /config/patroni.yml /tmp/patroni.yml
+          chmod 644 /tmp/*.conf
+          chmod 644 /tmp/patroni.yml
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: postgresql-config
+          mountPath: /tmp
+
+      # Main Container
+      containers:
+      - name: timescaledb
+        image: timescale/timescaledb-ha:pg15.5-ts2.13.1-all
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5432
+          name: postgresql
+          protocol: TCP
+        - containerPort: 8008
+          name: patroni
+          protocol: TCP
+
+        env:
+        # PostgreSQL Configuration
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: timescaledb-credentials
+              key: POSTGRES_PASSWORD
+        - name: PATRONI_SUPERUSER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: timescaledb-credentials
+              key: PATRONI_SUPERUSER_PASSWORD
+        - name: REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: timescaledb-credentials
+              key: REPLICATION_PASSWORD
+        - name: APP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: timescaledb-credentials
+              key: APP_PASSWORD
+
+        # Patroni Configuration
+        - name: PATRONI_KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PATRONI_KUBERNETES_LABELS
+          value: "{app.kubernetes.io/name: timescaledb}"
+        - name: PATRONI_SCOPE
+          value: timescaledb-cluster
+        - name: PATRONI_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+        # Resource limits
+        - name: POD_CPU_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: limits.cpu
+        - name: POD_MEMORY_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: limits.memory
+
+        # Volume Mounts
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: wal
+          mountPath: /var/lib/postgresql/wal
+        - name: backup
+          mountPath: /backup
+        - name: postgresql-config
+          mountPath: /etc/postgresql
+        - name: patroni-config
+          mountPath: /etc/patroni
+        - name: tls
+          mountPath: /etc/postgresql/tls
+          readOnly: true
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+
+        # Resource Requirements
+        resources:
+          requests:
+            cpu: "4000m"
+            memory: "16Gi"
+          limits:
+            cpu: "8000m"
+            memory: "32Gi"
+
+        # Liveness Probe
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+
+        # Readiness Probe
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres -h 127.0.0.1 -p 5432 && [ -f /tmp/pg_ready ]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+
+        # Startup Probe
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 30
+
+        # Security Context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+
+      # PostgreSQL Exporter for Prometheus
+      - name: postgres-exporter
+        image: prometheuscommunity/postgres-exporter:v0.15.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9187
+          name: metrics
+          protocol: TCP
+        env:
+        - name: DATA_SOURCE_NAME
+          value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=require"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: timescaledb-credentials
+              key: POSTGRES_PASSWORD
+        - name: PG_EXPORTER_EXTEND_QUERY_PATH
+          value: /etc/postgres-exporter/queries.yaml
+        volumeMounts:
+        - name: exporter-config
+          mountPath: /etc/postgres-exporter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+
+      # Volumes
+      volumes:
+      - name: config
+        configMap:
+          name: timescaledb-config
+      - name: patroni-config
+        configMap:
+          name: patroni-config
+      - name: postgresql-config
+        emptyDir: {}
+      - name: tls
+        secret:
+          secretName: timescaledb-tls
+          defaultMode: 0600
+      - name: init-scripts
+        configMap:
+          name: timescaledb-init-scripts
+      - name: exporter-config
+        configMap:
+          name: postgres-exporter-config
+
+      # Termination Grace Period
+      terminationGracePeriodSeconds: 120
+
+  # Volume Claim Templates
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/component: storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: timescaledb-premium-ssd
+      resources:
+        requests:
+          storage: 500Gi
+
+  - metadata:
+      name: wal
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/component: storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: timescaledb-wal-ssd
+      resources:
+        requests:
+          storage: 50Gi
+
+  - metadata:
+      name: backup
+      labels:
+        app.kubernetes.io/name: timescaledb
+        app.kubernetes.io/component: storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: timescaledb-backup
+      resources:
+        requests:
+          storage: 200Gi
+
+---
+# Service Account for Patroni
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: timescaledb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+
+---
+# Role for Patroni
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: timescaledb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - get
+  - patch
+  - update
+  - create
+  - list
+  - watch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+---
+# RoleBinding for Patroni
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: timescaledb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: timescaledb
+subjects:
+- kind: ServiceAccount
+  name: timescaledb
+  namespace: timescaledb
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: timescaledb-pdb
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+      app.kubernetes.io/component: database

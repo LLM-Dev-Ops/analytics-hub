@@ -1,0 +1,463 @@
+---
+# ConfigMap with Kubernetes cluster overview dashboard
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-kubernetes
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  kubernetes-cluster-overview.json: |
+    {
+      "dashboard": {
+        "title": "Kubernetes Cluster Overview",
+        "tags": ["kubernetes", "cluster"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Cluster CPU Usage",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) by (node)",
+                "legendFormat": "{{node}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Cluster Memory Usage",
+            "targets": [
+              {
+                "expr": "sum(container_memory_working_set_bytes) by (node) / sum(machine_memory_bytes) by (node)",
+                "legendFormat": "{{node}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Pod Count by Namespace",
+            "targets": [
+              {
+                "expr": "sum(kube_pod_info) by (namespace)",
+                "legendFormat": "{{namespace}}"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+
+  kubernetes-pods.json: |
+    {
+      "dashboard": {
+        "title": "Kubernetes Pods",
+        "tags": ["kubernetes", "pods"],
+        "timezone": "browser",
+        "templating": {
+          "list": [
+            {
+              "name": "namespace",
+              "type": "query",
+              "query": "label_values(kube_pod_info, namespace)",
+              "datasource": "Prometheus"
+            }
+          ]
+        },
+        "panels": [
+          {
+            "title": "Pod CPU Usage",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m])) by (pod)",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Pod Memory Usage",
+            "targets": [
+              {
+                "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\"}) by (pod)",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Pod Restart Count",
+            "targets": [
+              {
+                "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}) by (pod)",
+                "legendFormat": "{{pod}}"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+---
+# ConfigMap with application-specific dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-application
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  llm-analytics-api.json: |
+    {
+      "dashboard": {
+        "title": "LLM Analytics API Dashboard",
+        "tags": ["application", "api"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Request Rate",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{job=\"llm-analytics-api\"}[5m])) by (method, path)",
+                "legendFormat": "{{method}} {{path}}"
+              }
+            ],
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "title": "Error Rate",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{job=\"llm-analytics-api\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"llm-analytics-api\"}[5m]))",
+                "legendFormat": "Error Rate"
+              }
+            ],
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "title": "Request Duration (p95, p99)",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"llm-analytics-api\"}[5m]))",
+                "legendFormat": "p95"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"llm-analytics-api\"}[5m]))",
+                "legendFormat": "p99"
+              }
+            ],
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "title": "Active Database Connections",
+            "targets": [
+              {
+                "expr": "sum(db_connections_active{job=\"llm-analytics-api\"})",
+                "legendFormat": "Active Connections"
+              },
+              {
+                "expr": "sum(db_connections_max{job=\"llm-analytics-api\"})",
+                "legendFormat": "Max Connections"
+              }
+            ],
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ]
+      }
+    }
+
+  kafka-metrics.json: |
+    {
+      "dashboard": {
+        "title": "Kafka Metrics",
+        "tags": ["kafka", "messaging"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Messages In Per Second",
+            "targets": [
+              {
+                "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total[5m])) by (topic)",
+                "legendFormat": "{{topic}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Consumer Lag",
+            "targets": [
+              {
+                "expr": "sum(kafka_consumergroup_lag) by (consumergroup, topic)",
+                "legendFormat": "{{consumergroup}} - {{topic}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Bytes In/Out",
+            "targets": [
+              {
+                "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesin_total[5m]))",
+                "legendFormat": "Bytes In"
+              },
+              {
+                "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total[5m]))",
+                "legendFormat": "Bytes Out"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Under Replicated Partitions",
+            "targets": [
+              {
+                "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions)",
+                "legendFormat": "Under Replicated"
+              }
+            ],
+            "type": "stat"
+          }
+        ]
+      }
+    }
+
+  redis-metrics.json: |
+    {
+      "dashboard": {
+        "title": "Redis Metrics",
+        "tags": ["redis", "cache"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Operations Per Second",
+            "targets": [
+              {
+                "expr": "sum(rate(redis_commands_processed_total[5m])) by (cmd)",
+                "legendFormat": "{{cmd}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Memory Usage",
+            "targets": [
+              {
+                "expr": "redis_memory_used_bytes",
+                "legendFormat": "Used"
+              },
+              {
+                "expr": "redis_memory_max_bytes",
+                "legendFormat": "Max"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Hit Rate",
+            "targets": [
+              {
+                "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))",
+                "legendFormat": "Hit Rate"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Connected Clients",
+            "targets": [
+              {
+                "expr": "redis_connected_clients",
+                "legendFormat": "Clients"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+
+  timescaledb-metrics.json: |
+    {
+      "dashboard": {
+        "title": "TimescaleDB Metrics",
+        "tags": ["database", "timescaledb"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Database Size",
+            "targets": [
+              {
+                "expr": "pg_database_size_bytes",
+                "legendFormat": "{{datname}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Active Connections",
+            "targets": [
+              {
+                "expr": "pg_stat_database_numbackends",
+                "legendFormat": "{{datname}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Transaction Rate",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_xact_commit[5m])",
+                "legendFormat": "Commits"
+              },
+              {
+                "expr": "rate(pg_stat_database_xact_rollback[5m])",
+                "legendFormat": "Rollbacks"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Cache Hit Ratio",
+            "targets": [
+              {
+                "expr": "pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read)",
+                "legendFormat": "{{datname}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Query Duration (p95)",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(pg_stat_statements_mean_exec_time_seconds_bucket[5m]))",
+                "legendFormat": "p95"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+
+  nginx-ingress.json: |
+    {
+      "dashboard": {
+        "title": "NGINX Ingress Controller",
+        "tags": ["ingress", "nginx"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Request Rate by Ingress",
+            "targets": [
+              {
+                "expr": "sum(rate(nginx_ingress_controller_requests[5m])) by (ingress)",
+                "legendFormat": "{{ingress}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Response Time (p95, p99)",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(nginx_ingress_controller_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "p95"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(nginx_ingress_controller_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "p99"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "Status Codes",
+            "targets": [
+              {
+                "expr": "sum(rate(nginx_ingress_controller_requests[5m])) by (status)",
+                "legendFormat": "{{status}}"
+              }
+            ],
+            "type": "graph"
+          },
+          {
+            "title": "SSL Expiry",
+            "targets": [
+              {
+                "expr": "(nginx_ingress_controller_ssl_expire_time_seconds - time()) / 86400",
+                "legendFormat": "{{host}}"
+              }
+            ],
+            "type": "graph"
+          }
+        ]
+      }
+    }
+---
+# Grafana Image Renderer for PDF/PNG exports
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-image-renderer
+  namespace: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grafana-image-renderer
+  template:
+    metadata:
+      labels:
+        app: grafana-image-renderer
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: renderer
+        image: grafana/grafana-image-renderer:latest
+        ports:
+        - containerPort: 8081
+          name: http
+        env:
+        - name: ENABLE_METRICS
+          value: "true"
+        - name: HTTP_PORT
+          value: "8081"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-image-renderer
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana-image-renderer
+  ports:
+  - port: 8081
+    targetPort: 8081
+    name: http

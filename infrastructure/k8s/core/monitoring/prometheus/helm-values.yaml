@@ -1,0 +1,475 @@
+# Prometheus Stack Helm Values (kube-prometheus-stack)
+# Helm chart: prometheus-community/kube-prometheus-stack
+# Version: 56.0.0+
+
+# Global settings
+global:
+  rbac:
+    create: true
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  # Security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+
+  # High availability
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - prometheus-operator
+          topologyKey: kubernetes.io/hostname
+
+# Prometheus instance
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    # Replica configuration for high availability
+    replicas: 2
+    replicaExternalLabelName: "replica"
+    prometheusExternalLabelName: "cluster"
+
+    # Retention settings
+    retention: 30d
+    retentionSize: "100GB"
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: 2000m
+        memory: 8Gi
+      limits:
+        cpu: 4000m
+        memory: 16Gi
+
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: fast-ssd
+          resources:
+            requests:
+              storage: 150Gi
+
+    # Service monitors selector
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    # Pod monitors selector
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+
+    # Probe selector
+    probeSelector: {}
+    probeNamespaceSelector: {}
+
+    # Rule selector
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+
+    # External labels
+    externalLabels:
+      cluster: llm-analytics-prod
+      environment: production
+
+    # Remote write configuration (for long-term storage)
+    remoteWrite:
+    - url: "http://thanos-receive.monitoring.svc:19291/api/v1/receive"
+      writeRelabelConfigs:
+      - sourceLabels: [__name__]
+        regex: 'up|prometheus_.*|container_.*|kube_.*|node_.*|apiserver_.*|scheduler_.*|controller_manager_.*'
+        action: keep
+      queueConfig:
+        capacity: 10000
+        maxShards: 50
+        minShards: 1
+        maxSamplesPerSend: 5000
+        batchSendDeadline: 5s
+        minBackoff: 30ms
+        maxBackoff: 100ms
+
+    # Additional scrape configs
+    additionalScrapeConfigs:
+    # Kafka JMX metrics
+    - job_name: 'kafka-metrics'
+      static_configs:
+      - targets: ['kafka-0.kafka-headless.llm-analytics.svc:9999']
+        labels:
+          app: kafka
+          broker_id: '0'
+      - targets: ['kafka-1.kafka-headless.llm-analytics.svc:9999']
+        labels:
+          app: kafka
+          broker_id: '1'
+      - targets: ['kafka-2.kafka-headless.llm-analytics.svc:9999']
+        labels:
+          app: kafka
+          broker_id: '2'
+
+    # Redis metrics
+    - job_name: 'redis-metrics'
+      static_configs:
+      - targets: ['redis-cluster.llm-analytics.svc:9121']
+        labels:
+          app: redis
+
+    # TimescaleDB metrics
+    - job_name: 'timescaledb-metrics'
+      static_configs:
+      - targets: ['timescaledb.llm-analytics.svc:9187']
+        labels:
+          app: timescaledb
+
+    # LLM Analytics API metrics
+    - job_name: 'llm-analytics-api'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - llm-analytics
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: llm-analytics-api
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: metrics
+        action: keep
+
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Pod anti-affinity for high availability
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - prometheus
+          topologyKey: kubernetes.io/hostname
+
+    # Topology spread constraints
+    topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9090
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/auth-type: basic
+      nginx.ingress.kubernetes.io/auth-secret: prometheus-basic-auth
+      nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required'
+    hosts:
+    - prometheus.llm-analytics.io
+    tls:
+    - secretName: prometheus-tls
+      hosts:
+      - prometheus.llm-analytics.io
+
+# Alertmanager configuration
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    # Replica configuration
+    replicas: 3
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Storage
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: fast-ssd
+          resources:
+            requests:
+              storage: 10Gi
+
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Pod anti-affinity
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - alertmanager
+          topologyKey: kubernetes.io/hostname
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9093
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/auth-type: basic
+      nginx.ingress.kubernetes.io/auth-secret: alertmanager-basic-auth
+    hosts:
+    - alertmanager.llm-analytics.io
+    tls:
+    - secretName: alertmanager-tls
+      hosts:
+      - alertmanager.llm-analytics.io
+
+  # Alertmanager configuration
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      # Critical alerts go to PagerDuty
+      - match:
+          severity: critical
+        receiver: pagerduty
+        continue: true
+      # Warning alerts go to Slack
+      - match:
+          severity: warning
+        receiver: slack
+      # Platform alerts
+      - match:
+          team: platform
+        receiver: platform-team
+      # Application alerts
+      - match:
+          team: application
+        receiver: app-team
+
+    receivers:
+    - name: 'default'
+      slack_configs:
+      - channel: '#alerts'
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] Prometheus Event'
+        text: >-
+          {{ range .Alerts }}
+            *Alert:* {{ .Labels.alertname }}
+            *Description:* {{ .Annotations.description }}
+            *Severity:* {{ .Labels.severity }}
+            *Details:*
+            {{ range .Labels.SortedPairs }} • *{{ .Name }}:* `{{ .Value }}`
+            {{ end }}
+          {{ end }}
+
+    - name: 'pagerduty'
+      pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+        description: '{{ .CommonAnnotations.summary }}'
+
+    - name: 'slack'
+      slack_configs:
+      - channel: '#alerts-warning'
+        title: '[WARNING] Prometheus Alert'
+        text: >-
+          {{ range .Alerts }}
+            *Alert:* {{ .Labels.alertname }}
+            *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+    - name: 'platform-team'
+      slack_configs:
+      - channel: '#platform-alerts'
+      email_configs:
+      - to: 'platform-team@llm-analytics.io'
+        from: 'alertmanager@llm-analytics.io'
+        smarthost: 'smtp.llm-analytics.io:587'
+
+    - name: 'app-team'
+      slack_configs:
+      - channel: '#app-alerts'
+      email_configs:
+      - to: 'app-team@llm-analytics.io'
+        from: 'alertmanager@llm-analytics.io'
+        smarthost: 'smtp.llm-analytics.io:587'
+
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'cluster', 'service']
+
+# Node exporter
+nodeExporter:
+  enabled: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Kube-state-metrics
+kubeStateMetrics:
+  enabled: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Default rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# Additional prometheus rules
+additionalPrometheusRulesMap:
+  llm-analytics-rules:
+    groups:
+    - name: llm-analytics
+      interval: 30s
+      rules:
+      # API request rate
+      - record: job:api_request_rate:5m
+        expr: rate(http_requests_total{job="llm-analytics-api"}[5m])
+
+      # API error rate
+      - record: job:api_error_rate:5m
+        expr: rate(http_requests_total{job="llm-analytics-api",status=~"5.."}[5m])
+
+      # API latency p95
+      - record: job:api_latency_p95:5m
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="llm-analytics-api"}[5m]))
+
+      # Kafka consumer lag
+      - alert: KafkaConsumerLag
+        expr: kafka_consumergroup_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }}"
+
+      # Redis memory usage
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of memory"
+
+      # API high error rate
+      - alert: APIHighErrorRate
+        expr: job:api_error_rate:5m > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High API error rate"
+          description: "API error rate is {{ $value | humanizePercentage }}"
+
+      # API high latency
+      - alert: APIHighLatency
+        expr: job:api_latency_p95:5m > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "API p95 latency is {{ $value }}s"

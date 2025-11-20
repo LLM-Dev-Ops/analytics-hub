@@ -1,0 +1,356 @@
+# TimescaleDB Helm Chart Values
+# Alternative deployment method using TimescaleDB Helm Chart
+# Repository: https://github.com/timescale/timescaledb-kubernetes
+
+# Global settings
+nameOverride: "timescaledb"
+fullnameOverride: "timescaledb"
+
+# Image configuration
+image:
+  repository: timescale/timescaledb-ha
+  tag: pg15.5-ts2.13.1-all
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 3
+
+# Pod management
+podManagementPolicy: OrderedReady
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+
+# Patroni configuration for HA
+patroni:
+  enabled: true
+  bootstrap:
+    dcs:
+      ttl: 30
+      loop_wait: 10
+      retry_timeout: 10
+      maximum_lag_on_failover: 1048576
+      synchronous_mode: true
+      synchronous_mode_strict: false
+      synchronous_node_count: 1
+  kubernetes:
+    use_endpoints: true
+    labels:
+      app.kubernetes.io/name: timescaledb
+
+# PostgreSQL configuration
+postgresql:
+  version: 15
+  parameters:
+    # Connection settings
+    max_connections: 200
+    superuser_reserved_connections: 3
+
+    # Memory settings
+    shared_buffers: 8GB
+    effective_cache_size: 24GB
+    maintenance_work_mem: 2GB
+    work_mem: 64MB
+
+    # WAL settings
+    wal_level: replica
+    wal_log_hints: on
+    wal_buffers: 16MB
+    min_wal_size: 2GB
+    max_wal_size: 8GB
+    wal_compression: on
+
+    # Replication
+    max_wal_senders: 10
+    max_replication_slots: 10
+    hot_standby: on
+
+    # Checkpointing
+    checkpoint_timeout: 15min
+    checkpoint_completion_target: 0.9
+
+    # Performance
+    random_page_cost: 1.1
+    effective_io_concurrency: 200
+
+    # Logging
+    log_checkpoints: on
+    log_connections: on
+    log_disconnections: on
+    log_lock_waits: on
+
+    # TimescaleDB
+    shared_preload_libraries: 'timescaledb,pg_stat_statements'
+    timescaledb.telemetry_level: off
+    timescaledb.max_background_workers: 8
+
+# Resources
+resources:
+  requests:
+    cpu: 4000m
+    memory: 16Gi
+  limits:
+    cpu: 8000m
+    memory: 32Gi
+
+# Storage
+persistence:
+  enabled: true
+  storageClass: timescaledb-premium-ssd
+  size: 500Gi
+  accessModes:
+    - ReadWriteOnce
+
+# WAL storage (separate volume)
+walStorage:
+  enabled: true
+  storageClass: timescaledb-wal-ssd
+  size: 50Gi
+  accessModes:
+    - ReadWriteOnce
+
+# Backup storage
+backupStorage:
+  enabled: true
+  storageClass: timescaledb-backup
+  size: 200Gi
+  accessModes:
+    - ReadWriteOnce
+
+# Security context
+securityContext:
+  fsGroup: 999
+  runAsUser: 999
+  runAsNonRoot: true
+  fsGroupChangePolicy: OnRootMismatch
+
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# TLS/SSL
+tls:
+  enabled: true
+  certificateSecretName: timescaledb-tls
+
+# Credentials
+credentials:
+  postgres:
+    secretName: timescaledb-credentials
+    key: POSTGRES_PASSWORD
+  replicator:
+    secretName: timescaledb-credentials
+    key: REPLICATION_PASSWORD
+
+# Service configuration
+service:
+  primary:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+  replica:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+
+# Load Balancer (optional)
+loadBalancer:
+  enabled: false
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+# Pod affinity
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - timescaledb
+        topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - timescaledb
+          topologyKey: topology.kubernetes.io/zone
+
+# Tolerations
+tolerations: []
+
+# Node selector
+nodeSelector: {}
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9187"
+  prometheus.io/path: "/metrics"
+
+# Service account
+serviceAccount:
+  create: true
+  name: timescaledb
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  enabled: true
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+
+# Metrics
+metrics:
+  enabled: true
+  image:
+    repository: prometheuscommunity/postgres-exporter
+    tag: v0.15.0
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+# PgBouncer connection pooling
+pgBouncer:
+  enabled: true
+  replicaCount: 3
+  config:
+    poolMode: transaction
+    maxClientConn: 1000
+    defaultPoolSize: 25
+    minPoolSize: 5
+    reservePoolSize: 5
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule:
+    full: "0 2 * * *"       # Daily at 2 AM
+    differential: "0 */6 * * *"  # Every 6 hours
+  retention:
+    full: 7
+    differential: 4
+    days: 30
+  s3:
+    enabled: true
+    bucketSecretName: timescaledb-backup-s3
+  pgBackRest:
+    image:
+      repository: pgbackrest/pgbackrest
+      tag: "2.49"
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+
+# Monitoring and alerting
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+    dashboards:
+      enabled: true
+  alerts:
+    enabled: true
+
+# Network policies
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            app.kubernetes.io/part-of: llm-analytics-hub
+
+# Initialize database
+initdb:
+  enabled: true
+  scripts:
+    01-init-database.sql: |
+      CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+      CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+      CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+# Environment variables
+env:
+  - name: POSTGRES_DB
+    value: llm_analytics
+  - name: PGDATA
+    value: /var/lib/postgresql/data/pgdata
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Extra containers
+extraContainers: []
+
+# Extra init containers
+extraInitContainers: []

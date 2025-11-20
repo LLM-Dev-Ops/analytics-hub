@@ -6,25 +6,93 @@ authors = ["LLM Analytics Team"]
 description = "Centralized analytics hub for LLM ecosystem monitoring"
 
 [dependencies]
+# Core dependencies
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["serde", "v4"] }
 thiserror = "1.0"
 async-trait = "0.1"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Optional dependencies for specific features
-tokio = { version = "1.0", features = ["full"], optional = true }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres"], optional = true }
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Database - TimescaleDB (PostgreSQL)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
+
+# Redis - Caching layer
+redis = { version = "0.24", features = ["tokio-comp", "cluster-async", "connection-manager"] }
+
+# Kafka - Event streaming
+rdkafka = { version = "0.35", features = ["cmake-build", "ssl", "gssapi", "libz", "zstd"] }
+
+# Time-series and metrics
 influxdb = { version = "0.7", optional = true }
+
+# HTTP client/server
+axum = "0.7"
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-full"] }
+hyper = "1.0"
+
+# Serialization
+bincode = "1.3"
+rmp-serde = "1.1" # MessagePack
+
+# Statistics and math
+statrs = "0.16"
+ndarray = "0.15"
+
+# Machine Learning / Predictive Analytics
+linfa = { version = "0.7", optional = true }
+linfa-clustering = { version = "0.7", optional = true }
+
+# Configuration
+config = "0.14"
+dotenv = "0.15"
+
+# Metrics and observability
+prometheus = "0.13"
+opentelemetry = { version = "0.21", optional = true }
+opentelemetry-prometheus = { version = "0.14", optional = true }
+
+# Circuit breaker and resilience
+failsafe = "1.2"
+
+# Concurrency and synchronization
+dashmap = "5.5"
+parking_lot = "0.12"
+
+# Utilities
+futures = "0.3"
+bytes = "1.5"
+regex = "1.10"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }
+tokio-test = "0.4"
+proptest = "1.4"
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+fake = { version = "2.9", features = ["derive", "chrono", "uuid"] }
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+mockall = "0.12"
+rstest = "0.18"
+serial_test = "3.0"
+wiremock = "0.6"
+tempfile = "3.8"
+insta = "1.34"
+pretty_assertions = "1.4"
+test-case = "3.3"
 
 [features]
-default = ["async"]
-async = ["tokio"]
-postgres = ["sqlx"]
+default = ["full"]
+full = ["ml", "telemetry"]
+ml = ["linfa", "linfa-clustering"]
+telemetry = ["opentelemetry", "opentelemetry-prometheus"]
 timeseries = ["influxdb"]
 
 [[example]]
@@ -38,3 +106,15 @@ path = "src/examples/metrics_examples.rs"
 [lib]
 name = "llm_analytics_hub"
 path = "src/lib.rs"
+
+[[bench]]
+name = "event_processing"
+harness = false
+
+[[bench]]
+name = "metric_aggregation"
+harness = false
+
+[[bench]]
+name = "timeseries_query"
+harness = false

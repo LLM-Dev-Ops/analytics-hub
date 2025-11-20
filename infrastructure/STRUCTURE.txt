@@ -1,0 +1,49 @@
+infrastructure/
+├── scripts/                          # Deployment and automation scripts
+│   ├── deploy-aws.sh                # AWS infrastructure deployment (18KB)
+│   ├── deploy-gcp.sh                # GCP infrastructure deployment (14KB)
+│   ├── deploy-azure.sh              # Azure infrastructure deployment (14KB)
+│   ├── deploy-k8s-core.sh           # Kubernetes core services (11KB)
+│   ├── validate.sh                  # Deployment validation (21KB)
+│   ├── destroy.sh                   # Safe infrastructure teardown (13KB)
+│   └── utils.sh                     # Shared utilities (8KB)
+│
+├── config/                           # Configuration management
+│   ├── .env.example                 # Environment variables template
+│   ├── dev.yaml                     # Development configuration
+│   ├── staging.yaml                 # Staging configuration (to be created)
+│   └── production.yaml              # Production configuration
+│
+├── docs/                             # Operational documentation
+│   ├── DEPLOYMENT_GUIDE.md          # Step-by-step deployment
+│   ├── OPERATIONS_RUNBOOK.md        # Day-2 operations
+│   ├── TROUBLESHOOTING.md           # Common issues (to be created)
+│   ├── DISASTER_RECOVERY.md         # DR procedures (to be created)
+│   └── SCALING_GUIDE.md             # Scaling guide (to be created)
+│
+├── monitoring/                       # Monitoring & alerting configs
+│   ├── dashboards/                  # Grafana dashboards
+│   ├── alerts/                      # Alert rules
+│   │   └── api-alerts.yaml         # API alerting rules
+│   └── prometheus-values.yaml       # Prometheus Helm values
+│
+├── .github/                          # CI/CD workflows
+│   └── workflows/
+│       └── infrastructure.yml       # Infrastructure CI/CD pipeline
+│
+├── logs/                             # Deployment logs (auto-created)
+│
+├── deployments/                      # Deployment metadata (auto-created)
+│
+├── Makefile                          # Common operations (60+ commands)
+├── README.md                         # Master infrastructure guide
+└── DEVOPS_AUTOMATION_COMPLETE.md    # Completion summary
+
+Key Features:
+- Multi-cloud support (AWS, GCP, Azure)
+- Production-ready automation
+- Comprehensive validation
+- Complete monitoring setup
+- CI/CD pipelines
+- Operational runbooks
+- 60+ Makefile commands

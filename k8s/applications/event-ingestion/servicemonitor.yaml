@@ -1,0 +1,22 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: event-ingestion
+  namespace: llm-analytics
+  labels:
+    app: event-ingestion
+    component: ingestion
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: event-ingestion
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - llm-analytics

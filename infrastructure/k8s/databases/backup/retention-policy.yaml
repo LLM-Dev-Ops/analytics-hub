@@ -1,0 +1,366 @@
+---
+# Retention Policy Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-retention-policy
+  namespace: llm-analytics-hub
+  labels:
+    app: backup
+    component: retention
+data:
+  retention-config.json: |
+    {
+      "databases": {
+        "timescaledb": {
+          "full_backups": {
+            "retention_days": 7,
+            "retention_count": 7
+          },
+          "incremental_backups": {
+            "retention_days": 30,
+            "retention_count": 30
+          },
+          "point_in_time_recovery": {
+            "wal_retention_days": 30
+          },
+          "archival": {
+            "enabled": true,
+            "monthly_retention_months": 12,
+            "yearly_retention_years": 7
+          }
+        },
+        "redis": {
+          "hourly_snapshots": {
+            "retention_hours": 24,
+            "retention_count": 24
+          },
+          "daily_snapshots": {
+            "retention_days": 7,
+            "retention_count": 7
+          },
+          "aof": {
+            "retention_days": 3
+          },
+          "archival": {
+            "enabled": true,
+            "weekly_retention_weeks": 4,
+            "monthly_retention_months": 3
+          }
+        },
+        "kafka": {
+          "topic_backups": {
+            "retention_days": 7,
+            "retention_count": 7
+          },
+          "metadata_backups": {
+            "retention_days": 30,
+            "retention_count": 30
+          },
+          "zookeeper_backups": {
+            "retention_days": 7,
+            "retention_count": 7
+          },
+          "archival": {
+            "enabled": true,
+            "monthly_retention_months": 6
+          }
+        }
+      },
+      "compliance": {
+        "gdpr": {
+          "enabled": true,
+          "max_retention_days": 730
+        },
+        "sox": {
+          "enabled": false,
+          "min_retention_years": 7
+        },
+        "hipaa": {
+          "enabled": false,
+          "min_retention_years": 6
+        }
+      },
+      "cost_optimization": {
+        "enabled": true,
+        "transitions": [
+          {
+            "days": 30,
+            "storage_class": "STANDARD_IA"
+          },
+          {
+            "days": 90,
+            "storage_class": "GLACIER"
+          }
+        ]
+      }
+    }
+
+  retention-enforcement.sh: |
+    #!/bin/bash
+    ###############################################################################
+    # Retention Policy Enforcement Script
+    ###############################################################################
+
+    set -euo pipefail
+
+    CONFIG_FILE="${CONFIG_FILE:-/config/retention-config.json}"
+    S3_BUCKET="${S3_BUCKET:-llm-analytics-backups}"
+
+    log() {
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
+    }
+
+    error() {
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
+    }
+
+    enforce_timescaledb_retention() {
+        log "Enforcing TimescaleDB retention policy..."
+
+        FULL_RETENTION_DAYS=$(jq -r '.databases.timescaledb.full_backups.retention_days' "$CONFIG_FILE")
+        INCR_RETENTION_DAYS=$(jq -r '.databases.timescaledb.incremental_backups.retention_days' "$CONFIG_FILE")
+
+        # Delete old full backups
+        aws s3 ls "s3://$S3_BUCKET/timescaledb/full/" | while read -r line; do
+            BACKUP_DATE=$(echo "$line" | awk '{print $1}')
+            BACKUP_FILE=$(echo "$line" | awk '{print $4}')
+            DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+
+            if [ "$DAYS_OLD" -gt "$FULL_RETENTION_DAYS" ]; then
+                log "Deleting old full backup: $BACKUP_FILE (age: $DAYS_OLD days)"
+                aws s3 rm "s3://$S3_BUCKET/timescaledb/full/$BACKUP_FILE"
+            fi
+        done
+
+        # Delete old incremental backups
+        aws s3 ls "s3://$S3_BUCKET/timescaledb/incr/" | while read -r line; do
+            BACKUP_DATE=$(echo "$line" | awk '{print $1}')
+            BACKUP_FILE=$(echo "$line" | awk '{print $4}')
+            DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+
+            if [ "$DAYS_OLD" -gt "$INCR_RETENTION_DAYS" ]; then
+                log "Deleting old incremental backup: $BACKUP_FILE (age: $DAYS_OLD days)"
+                aws s3 rm "s3://$S3_BUCKET/timescaledb/incr/$BACKUP_FILE"
+            fi
+        done
+
+        log "TimescaleDB retention policy enforced"
+    }
+
+    enforce_redis_retention() {
+        log "Enforcing Redis retention policy..."
+
+        HOURLY_RETENTION_HOURS=$(jq -r '.databases.redis.hourly_snapshots.retention_hours' "$CONFIG_FILE")
+        DAILY_RETENTION_DAYS=$(jq -r '.databases.redis.daily_snapshots.retention_days' "$CONFIG_FILE")
+
+        # Delete old hourly snapshots
+        aws s3 ls "s3://$S3_BUCKET/redis/hourly/" | while read -r line; do
+            BACKUP_DATE=$(echo "$line" | awk '{print $1, $2}')
+            BACKUP_FILE=$(echo "$line" | awk '{print $4}')
+            HOURS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 3600 ))
+
+            if [ "$HOURS_OLD" -gt "$HOURLY_RETENTION_HOURS" ]; then
+                log "Deleting old hourly snapshot: $BACKUP_FILE (age: $HOURS_OLD hours)"
+                aws s3 rm "s3://$S3_BUCKET/redis/hourly/$BACKUP_FILE"
+            fi
+        done
+
+        # Delete old daily snapshots
+        aws s3 ls "s3://$S3_BUCKET/redis/daily/" | while read -r line; do
+            BACKUP_DATE=$(echo "$line" | awk '{print $1}')
+            BACKUP_FILE=$(echo "$line" | awk '{print $4}')
+            DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+
+            if [ "$DAYS_OLD" -gt "$DAILY_RETENTION_DAYS" ]; then
+                log "Deleting old daily snapshot: $BACKUP_FILE (age: $DAYS_OLD days)"
+                aws s3 rm "s3://$S3_BUCKET/redis/daily/$BACKUP_FILE"
+            fi
+        done
+
+        log "Redis retention policy enforced"
+    }
+
+    enforce_kafka_retention() {
+        log "Enforcing Kafka retention policy..."
+
+        RETENTION_DAYS=$(jq -r '.databases.kafka.topic_backups.retention_days' "$CONFIG_FILE")
+
+        aws s3 ls "s3://$S3_BUCKET/kafka/" | while read -r line; do
+            BACKUP_DATE=$(echo "$line" | awk '{print $1}')
+            BACKUP_FILE=$(echo "$line" | awk '{print $4}')
+            DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+
+            if [ "$DAYS_OLD" -gt "$RETENTION_DAYS" ]; then
+                log "Deleting old Kafka backup: $BACKUP_FILE (age: $DAYS_OLD days)"
+                aws s3 rm "s3://$S3_BUCKET/kafka/$BACKUP_FILE"
+            fi
+        done
+
+        log "Kafka retention policy enforced"
+    }
+
+    create_archival_snapshots() {
+        log "Creating archival snapshots..."
+
+        # Monthly archival for TimescaleDB (first of month)
+        if [ "$(date +%d)" = "01" ]; then
+            log "Creating monthly archival for TimescaleDB..."
+            LATEST_FULL=$(aws s3 ls "s3://$S3_BUCKET/timescaledb/full/" | sort | tail -n 1 | awk '{print $4}')
+            if [ -n "$LATEST_FULL" ]; then
+                aws s3 cp "s3://$S3_BUCKET/timescaledb/full/$LATEST_FULL" \
+                    "s3://$S3_BUCKET/timescaledb/archival/monthly/$(date +%Y%m)/$LATEST_FULL"
+                log "Monthly archival created: $LATEST_FULL"
+            fi
+        fi
+
+        # Yearly archival for TimescaleDB (first of year)
+        if [ "$(date +%m%d)" = "0101" ]; then
+            log "Creating yearly archival for TimescaleDB..."
+            LATEST_FULL=$(aws s3 ls "s3://$S3_BUCKET/timescaledb/full/" | sort | tail -n 1 | awk '{print $4}')
+            if [ -n "$LATEST_FULL" ]; then
+                aws s3 cp "s3://$S3_BUCKET/timescaledb/full/$LATEST_FULL" \
+                    "s3://$S3_BUCKET/timescaledb/archival/yearly/$(date +%Y)/$LATEST_FULL"
+                log "Yearly archival created: $LATEST_FULL"
+            fi
+        fi
+
+        log "Archival snapshots created"
+    }
+
+    generate_retention_report() {
+        log "Generating retention report..."
+
+        REPORT_FILE="/tmp/retention-report-$(date +%Y%m%d).txt"
+
+        cat > "$REPORT_FILE" <<EOF
+    Backup Retention Report
+    Generated: $(date)
+    S3 Bucket: $S3_BUCKET
+
+    ===========================================
+    TimescaleDB Retention
+    ===========================================
+    Full Backups: $(aws s3 ls "s3://$S3_BUCKET/timescaledb/full/" | wc -l) (retention: $FULL_RETENTION_DAYS days)
+    Incremental Backups: $(aws s3 ls "s3://$S3_BUCKET/timescaledb/incr/" | wc -l) (retention: $INCR_RETENTION_DAYS days)
+    Total Size: $(aws s3 ls "s3://$S3_BUCKET/timescaledb/" --recursive --summarize | grep "Total Size" | awk '{print $3, $4}')
+
+    ===========================================
+    Redis Retention
+    ===========================================
+    Hourly Snapshots: $(aws s3 ls "s3://$S3_BUCKET/redis/hourly/" 2>/dev/null | wc -l) (retention: $HOURLY_RETENTION_HOURS hours)
+    Daily Snapshots: $(aws s3 ls "s3://$S3_BUCKET/redis/daily/" 2>/dev/null | wc -l) (retention: $DAILY_RETENTION_DAYS days)
+    Total Size: $(aws s3 ls "s3://$S3_BUCKET/redis/" --recursive --summarize | grep "Total Size" | awk '{print $3, $4}')
+
+    ===========================================
+    Kafka Retention
+    ===========================================
+    Topic Backups: $(aws s3 ls "s3://$S3_BUCKET/kafka/" | wc -l) (retention: $RETENTION_DAYS days)
+    Total Size: $(aws s3 ls "s3://$S3_BUCKET/kafka/" --recursive --summarize | grep "Total Size" | awk '{print $3, $4}')
+
+    ===========================================
+    Storage Cost Estimate
+    ===========================================
+    Total Backup Size: $(aws s3 ls "s3://$S3_BUCKET/" --recursive --summarize | grep "Total Size" | awk '{print $3, $4}')
+    Estimated Monthly Cost: \$$(aws s3 ls "s3://$S3_BUCKET/" --recursive --summarize | grep "Total Size" | awk '{print $3 * 0.023 / 1024 / 1024 / 1024}')
+
+    EOF
+
+        cat "$REPORT_FILE"
+
+        # Upload report to S3
+        aws s3 cp "$REPORT_FILE" "s3://$S3_BUCKET/reports/retention/$(basename $REPORT_FILE)"
+
+        log "Retention report generated and uploaded"
+    }
+
+    main() {
+        log "Starting retention policy enforcement..."
+
+        # Install dependencies
+        apk add --no-cache aws-cli jq
+
+        # Enforce retention policies
+        enforce_timescaledb_retention
+        enforce_redis_retention
+        enforce_kafka_retention
+
+        # Create archival snapshots
+        create_archival_snapshots
+
+        # Generate report
+        generate_retention_report
+
+        log "Retention policy enforcement completed"
+    }
+
+    main "$@"
+
+---
+# Retention Policy Enforcement CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention-policy-enforcement
+  namespace: llm-analytics-hub
+  labels:
+    app: backup
+    component: retention
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup
+            component: retention
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-orchestrator-sa
+          containers:
+            - name: retention-enforcement
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - /scripts/retention-enforcement.sh
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: scripts
+                  mountPath: /scripts
+              env:
+                - name: S3_BUCKET
+                  value: "llm-analytics-backups"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: secret-access-key
+                - name: AWS_REGION
+                  value: "us-east-1"
+                - name: CONFIG_FILE
+                  value: "/config/retention-config.json"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: config
+              configMap:
+                name: backup-retention-policy
+            - name: scripts
+              configMap:
+                name: backup-retention-policy
+                defaultMode: 0755

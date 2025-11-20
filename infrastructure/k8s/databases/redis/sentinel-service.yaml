@@ -1,0 +1,50 @@
+---
+# Headless Service for Sentinel StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - name: sentinel
+    port: 26379
+    targetPort: 26379
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel
+
+---
+# Service for Sentinel Client Connections
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel-announce
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9355"
+spec:
+  type: ClusterIP
+  ports:
+  - name: sentinel
+    port: 26379
+    targetPort: 26379
+    protocol: TCP
+  - name: metrics
+    port: 9355
+    targetPort: 9355
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: sentinel

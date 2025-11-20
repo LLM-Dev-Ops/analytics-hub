@@ -1,0 +1,237 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patroni-config
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: ha
+data:
+  patroni.yml: |
+    scope: timescaledb-cluster
+    name: ${HOSTNAME}
+    namespace: /service/timescaledb
+
+    restapi:
+      listen: 0.0.0.0:8008
+      connect_address: ${HOSTNAME}.timescaledb-headless.timescaledb.svc.cluster.local:8008
+      authentication:
+        username: patroni
+        password: ${PATRONI_SUPERUSER_PASSWORD}
+
+    etcd3:
+      hosts:
+        - etcd-0.etcd-headless.timescaledb.svc.cluster.local:2379
+        - etcd-1.etcd-headless.timescaledb.svc.cluster.local:2379
+        - etcd-2.etcd-headless.timescaledb.svc.cluster.local:2379
+      protocol: http
+
+    bootstrap:
+      dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: 1048576
+        master_start_timeout: 300
+        synchronous_mode: true
+        synchronous_mode_strict: false
+        synchronous_node_count: 1
+        postgresql:
+          use_pg_rewind: true
+          use_slots: true
+          parameters:
+            max_connections: 200
+            shared_buffers: 8GB
+            effective_cache_size: 24GB
+            maintenance_work_mem: 2GB
+            work_mem: 64MB
+            wal_level: replica
+            hot_standby: on
+            wal_log_hints: on
+            max_wal_senders: 10
+            max_replication_slots: 10
+            checkpoint_timeout: 15min
+            shared_preload_libraries: timescaledb,pg_stat_statements
+
+      initdb:
+        - encoding: UTF8
+        - locale: en_US.UTF-8
+        - data-checksums
+
+      pg_hba:
+        - host replication replicator 0.0.0.0/0 scram-sha-256
+        - host all all 0.0.0.0/0 scram-sha-256
+        - local all all scram-sha-256
+
+      users:
+        postgres:
+          password: ${POSTGRES_PASSWORD}
+          options:
+            - createrole
+            - createdb
+        replicator:
+          password: ${REPLICATION_PASSWORD}
+          options:
+            - replication
+
+    postgresql:
+      listen: 0.0.0.0:5432
+      connect_address: ${HOSTNAME}.timescaledb-headless.timescaledb.svc.cluster.local:5432
+      data_dir: /var/lib/postgresql/data/pgdata
+      bin_dir: /usr/lib/postgresql/15/bin
+      pgpass: /tmp/pgpass
+      authentication:
+        replication:
+          username: replicator
+          password: ${REPLICATION_PASSWORD}
+        superuser:
+          username: postgres
+          password: ${POSTGRES_PASSWORD}
+      parameters:
+        unix_socket_directories: /var/run/postgresql
+        ssl: on
+        ssl_cert_file: /etc/postgresql/tls/tls.crt
+        ssl_key_file: /etc/postgresql/tls/tls.key
+      create_replica_methods:
+        - basebackup
+      basebackup:
+        - checkpoint: fast
+        - verbose
+        - progress
+
+    watchdog:
+      mode: off
+
+    tags:
+      nofailover: false
+      noloadbalance: false
+      clonefrom: false
+      nosync: false
+
+---
+# etcd StatefulSet for Patroni consensus
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-headless
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/component: consensus
+spec:
+  clusterIP: None
+  ports:
+  - port: 2379
+    name: client
+  - port: 2380
+    name: peer
+  selector:
+    app.kubernetes.io/name: etcd
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/component: consensus
+spec:
+  type: ClusterIP
+  ports:
+  - port: 2379
+    name: client
+  selector:
+    app.kubernetes.io/name: etcd
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/component: consensus
+spec:
+  serviceName: etcd-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: etcd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: etcd
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - etcd
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: etcd
+        image: quay.io/coreos/etcd:v3.5.11
+        ports:
+        - containerPort: 2379
+          name: client
+        - containerPort: 2380
+          name: peer
+        env:
+        - name: ETCD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+          value: http://$(ETCD_NAME).etcd-headless.timescaledb.svc.cluster.local:2380
+        - name: ETCD_ADVERTISE_CLIENT_URLS
+          value: http://$(ETCD_NAME).etcd-headless.timescaledb.svc.cluster.local:2379
+        - name: ETCD_LISTEN_PEER_URLS
+          value: http://0.0.0.0:2380
+        - name: ETCD_LISTEN_CLIENT_URLS
+          value: http://0.0.0.0:2379
+        - name: ETCD_INITIAL_CLUSTER
+          value: etcd-0=http://etcd-0.etcd-headless.timescaledb.svc.cluster.local:2380,etcd-1=http://etcd-1.etcd-headless.timescaledb.svc.cluster.local:2380,etcd-2=http://etcd-2.etcd-headless.timescaledb.svc.cluster.local:2380
+        - name: ETCD_INITIAL_CLUSTER_STATE
+          value: new
+        - name: ETCD_INITIAL_CLUSTER_TOKEN
+          value: timescaledb-etcd-cluster
+        volumeMounts:
+        - name: etcd-data
+          mountPath: /var/run/etcd
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 2379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 2379
+          initialDelaySeconds: 10
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: etcd-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: timescaledb-premium-ssd
+      resources:
+        requests:
+          storage: 10Gi

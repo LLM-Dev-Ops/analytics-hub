@@ -1,0 +1,399 @@
+---
+# Example Application Deployment
+# This demonstrates how to deploy applications with proper configuration
+# for the LLM Analytics Hub GKE cluster
+
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-analytics
+  labels:
+    name: llm-analytics
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: llm-analytics-quota
+  namespace: llm-analytics
+spec:
+  hard:
+    requests.cpu: "100"
+    requests.memory: 200Gi
+    limits.cpu: "200"
+    limits.memory: 400Gi
+    persistentvolumeclaims: "20"
+    services.loadbalancers: "5"
+
+---
+# Limit Range
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: llm-analytics-limits
+  namespace: llm-analytics
+spec:
+  limits:
+  - max:
+      cpu: "4"
+      memory: 16Gi
+    min:
+      cpu: "100m"
+      memory: 128Mi
+    default:
+      cpu: "500m"
+      memory: 512Mi
+    defaultRequest:
+      cpu: "250m"
+      memory: 256Mi
+    type: Container
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: llm-analytics
+data:
+  environment: "production"
+  log_level: "info"
+  app.properties: |
+    server.port=8080
+    metrics.enabled=true
+    tracing.enabled=true
+
+---
+# Secret (base64 encoded values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: llm-analytics
+type: Opaque
+data:
+  # Example: echo -n "my-secret" | base64
+  api-key: bXktc2VjcmV0  # my-secret
+  db-password: cGFzc3dvcmQ=  # password
+
+---
+# PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data
+  namespace: llm-analytics
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: pd-ssd
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+  labels:
+    app: llm-analytics-app
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: llm-analytics-app
+  template:
+    metadata:
+      labels:
+        app: llm-analytics-app
+        version: v1
+        app.kubernetes.io/name: llm-analytics-app
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/monitoring: "true"
+        app.kubernetes.io/exposed: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Use Workload Identity
+      serviceAccountName: app-service-account
+
+      # Security Context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Anti-affinity for high availability
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - llm-analytics-app
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload-type
+                operator: In
+                values:
+                - application
+
+      # Tolerations for application node pool
+      tolerations:
+      - key: workload-type
+        operator: Equal
+        value: application
+        effect: NoSchedule
+
+      containers:
+      - name: app
+        image: gcr.io/project-id/llm-analytics-app:v1.0.0
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2
+            memory: 2Gi
+
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: http
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 30
+
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: app-data
+      - name: tmp
+        emptyDir: {}
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+  labels:
+    app: llm-analytics-app
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    app: llm-analytics-app
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-analytics-app
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 2
+        periodSeconds: 30
+      selectPolicy: Max
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: llm-analytics-app
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+  labels:
+    app: llm-analytics-app
+spec:
+  selector:
+    matchLabels:
+      app: llm-analytics-app
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-analytics-app
+  namespace: llm-analytics
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+spec:
+  tls:
+  - hosts:
+    - app.example.com
+    secretName: llm-analytics-app-tls
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-app
+            port:
+              number: 80

@@ -1,0 +1,347 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    app.kubernetes.io/version: "7.2"
+spec:
+  serviceName: redis-cluster
+  replicas: 6
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: cluster
+        app.kubernetes.io/version: "7.2"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: redis
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Pod Anti-Affinity - distribute across nodes and zones
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                - redis
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - cluster
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - redis
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - cluster
+              topologyKey: topology.kubernetes.io/zone
+
+      # Init Container for System Optimization
+      initContainers:
+      - name: system-init
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Configuring system for Redis..."
+
+          # Disable Transparent Huge Pages
+          echo never > /sys/kernel/mm/transparent_hugepage/enabled || true
+          echo never > /sys/kernel/mm/transparent_hugepage/defrag || true
+
+          # Set TCP backlog
+          sysctl -w net.core.somaxconn=65535 || true
+
+          # Set overcommit memory
+          sysctl -w vm.overcommit_memory=1 || true
+
+          # Set swappiness
+          sysctl -w vm.swappiness=0 || true
+
+          echo "System configuration complete"
+
+      - name: config-init
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Initializing Redis configuration..."
+
+          # Copy base config
+          cp /config/redis.conf /etc/redis/redis.conf
+
+          # Replace password placeholder
+          if [ -f /secrets/password ]; then
+            REDIS_PASSWORD=$(cat /secrets/password)
+            sed -i "s/REDIS_PASSWORD/${REDIS_PASSWORD}/g" /etc/redis/redis.conf
+          fi
+
+          # Set permissions
+          chmod 644 /etc/redis/redis.conf
+
+          echo "Configuration initialized"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: redis-auth
+          mountPath: /secrets
+          readOnly: true
+
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        - name: cluster-bus
+          containerPort: 16379
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-auth
+              key: password
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+
+        resources:
+          requests:
+            cpu: "2"
+            memory: 8Gi
+          limits:
+            cpu: "4"
+            memory: 16Gi
+
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/liveness.sh
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - /scripts/readiness.sh
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - redis-cli -a $REDIS_PASSWORD ping
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 30
+
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: scripts
+          mountPath: /scripts
+        - name: redis-auth
+          mountPath: /secrets
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+
+      # Redis Exporter for Prometheus
+      - name: metrics
+        image: oliver006/redis_exporter:v1.55.0-alpine
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-auth
+              key: password
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        - name: REDIS_EXPORTER_CHECK_KEYS
+          value: "*"
+        - name: REDIS_EXPORTER_CHECK_SINGLE_KEYS
+          value: ""
+        - name: REDIS_EXPORTER_IS_CLUSTER
+          value: "true"
+        - name: REDIS_EXPORTER_INCL_SYSTEM_METRICS
+          value: "true"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: 128Mi
+          limits:
+            cpu: "200m"
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9121
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9121
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+      volumes:
+      - name: config
+        configMap:
+          name: redis-config
+          items:
+          - key: redis.conf
+            path: redis.conf
+      - name: redis-config
+        emptyDir: {}
+      - name: scripts
+        configMap:
+          name: redis-scripts
+          defaultMode: 0755
+      - name: redis-auth
+        secret:
+          secretName: redis-auth
+      - name: tmp
+        emptyDir: {}
+
+      terminationGracePeriodSeconds: 30
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redis
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: serviceaccount
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-cluster-pdb
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+spec:
+  minAvailable: 4
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cluster

@@ -1,0 +1,155 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-ingestion
+  namespace: llm-analytics
+  labels:
+    app: event-ingestion
+    component: ingestion
+    version: v1
+    app.kubernetes.io/name: event-ingestion
+    app.kubernetes.io/component: ingestion
+    app.kubernetes.io/part-of: llm-analytics-hub
+    app.kubernetes.io/version: "0.1.0"
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: event-ingestion
+      component: ingestion
+  template:
+    metadata:
+      labels:
+        app: event-ingestion
+        component: ingestion
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: event-ingestion
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - event-ingestion
+              topologyKey: kubernetes.io/hostname
+
+      containers:
+      - name: event-ingestion
+        image: ghcr.io/llm-analytics/event-ingestion:0.1.0
+        imagePullPolicy: IfNotPresent
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: HTTP_PORT
+          value: "8080"
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: event-ingestion-config
+              key: kafka_brokers
+        - name: KAFKA_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: event-ingestion-config
+              key: kafka_topic
+        - name: MAX_PAYLOAD_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: event-ingestion-config
+              key: max_payload_size
+
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-ingestion
+  namespace: llm-analytics
+  labels:
+    app: event-ingestion

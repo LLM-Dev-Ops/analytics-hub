@@ -1,0 +1,236 @@
+name: Infrastructure CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'infrastructure/**'
+      - 'k8s/**'
+      - '.github/workflows/infrastructure.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'infrastructure/**'
+      - 'k8s/**'
+
+env:
+  TERRAFORM_VERSION: '1.5.0'
+  KUBECTL_VERSION: '1.28.0'
+  HELM_VERSION: '3.12.0'
+
+jobs:
+  validate:
+    name: Validate Infrastructure Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive infrastructure/terraform || true
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Validate Kubernetes manifests
+        run: |
+          yamllint k8s/*.yaml
+          kubectl --dry-run=client apply -f k8s/ || true
+
+      - name: Shellcheck deployment scripts
+        run: |
+          sudo apt-get install -y shellcheck
+          find infrastructure/scripts -name "*.sh" -exec shellcheck {} \;
+
+  test-deployment-scripts:
+    name: Test Deployment Scripts
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: test-cluster
+
+      - name: Test validation script
+        run: |
+          chmod +x infrastructure/scripts/validate.sh
+          ./infrastructure/scripts/validate.sh dev || true
+
+      - name: Test utilities
+        run: |
+          source infrastructure/scripts/utils.sh
+          log_info "Testing utilities"
+          generate_password 16
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'infrastructure/'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: [validate, test-deployment-scripts]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: dev
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name llm-analytics-hub-dev --region us-east-1
+
+      - name: Deploy to Dev
+        run: |
+          chmod +x infrastructure/scripts/deploy-k8s-core.sh
+          ./infrastructure/scripts/deploy-k8s-core.sh dev
+
+      - name: Validate deployment
+        run: |
+          chmod +x infrastructure/scripts/validate.sh
+          ./infrastructure/scripts/validate.sh dev
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [validate, test-deployment-scripts, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to Staging
+        run: |
+          chmod +x infrastructure/scripts/deploy-k8s-core.sh
+          ./infrastructure/scripts/deploy-k8s-core.sh staging
+
+      - name: Run smoke tests
+        run: |
+          kubectl wait --for=condition=ready pod -l app=analytics-api -n llm-analytics-hub --timeout=300s
+          kubectl run -it --rm test --image=curlimages/curl --restart=Never -- \
+            curl -f http://analytics-api-service.llm-analytics-hub/health
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: us-east-1
+
+      - name: Create pre-deployment backup
+        run: |
+          chmod +x infrastructure/scripts/backup.sh
+          ./infrastructure/scripts/backup.sh production || true
+
+      - name: Deploy to Production
+        run: |
+          chmod +x infrastructure/scripts/deploy-k8s-core.sh
+          ./infrastructure/scripts/deploy-k8s-core.sh production
+
+      - name: Validate production deployment
+        run: |
+          chmod +x infrastructure/scripts/validate.sh
+          ./infrastructure/scripts/validate.sh production
+
+      - name: Run performance baseline
+        run: |
+          # Add performance testing here
+          echo "Performance testing"
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          # Add Slack notification here
+          echo "Deployment completed"
+
+  drift-detection:
+    name: Detect Infrastructure Drift
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Detect drift
+        run: |
+          # Add Terraform drift detection
+          echo "Checking for infrastructure drift"

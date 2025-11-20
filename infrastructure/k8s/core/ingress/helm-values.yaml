@@ -1,0 +1,310 @@
+# NGINX Ingress Controller Helm Values
+# Helm chart: ingress-nginx/ingress-nginx
+# Version: 4.10.0+
+
+controller:
+  name: controller
+  image:
+    repository: registry.k8s.io/ingress-nginx/controller
+    tag: "v1.10.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  # High availability configuration
+  replicaCount: 3
+
+  minAvailable: 2
+
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+  # Resource requests and limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+  # Autoscaling configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Service configuration
+  service:
+    enabled: true
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+      service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+      # For GCP
+      # cloud.google.com/load-balancer-type: "Internal"
+      # For Azure
+      # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+
+    externalTrafficPolicy: Local
+
+    ports:
+      http: 80
+      https: 443
+
+    targetPorts:
+      http: http
+      https: https
+
+  # Metrics
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        prometheus: kube-prometheus
+    prometheusRule:
+      enabled: true
+      namespace: monitoring
+      rules:
+        - alert: NGINXConfigFailed
+          expr: count(nginx_ingress_controller_config_last_reload_successful == 0) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            description: bad ingress config - nginx config test failed
+            summary: uninstall the latest ingress changes to allow config reloads to resume
+        - alert: NGINXCertificateExpiry
+          expr: (avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()) < 604800
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            description: ssl certificate(s) will expire in less then a week
+            summary: renew expiring certificates to avoid downtime
+        - alert: NGINXTooMany500s
+          expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"5.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            description: Too many 5XXs
+            summary: More than 5% of all requests returned 5XX, this requires your attention
+        - alert: NGINXTooMany400s
+          expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"4.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            description: Too many 4XXs
+            summary: More than 5% of all requests returned 4XX, this requires your attention
+
+  # ConfigMap configuration
+  config:
+    # Security headers
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    use-proxy-protocol: "false"
+
+    # SSL configuration
+    ssl-protocols: "TLSv1.2 TLSv1.3"
+    ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    ssl-prefer-server-ciphers: "true"
+
+    # Rate limiting
+    limit-req-status-code: "429"
+    limit-conn-status-code: "429"
+
+    # Client body size
+    proxy-body-size: "100m"
+    client-body-buffer-size: "10m"
+
+    # Timeouts
+    proxy-connect-timeout: "60"
+    proxy-send-timeout: "300"
+    proxy-read-timeout: "300"
+    proxy-buffering: "on"
+
+    # Performance
+    worker-processes: "auto"
+    worker-connections: "10240"
+    max-worker-connections: "16384"
+
+    # Logging
+    log-format-upstream: '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_length $request_time [$proxy_upstream_name] [$proxy_alternative_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status $req_id'
+
+    # Security
+    hide-headers: "Server,X-Powered-By"
+    enable-ocsp: "true"
+    hsts: "true"
+    hsts-include-subdomains: "true"
+    hsts-max-age: "31536000"
+    hsts-preload: "true"
+
+    # ModSecurity WAF
+    enable-modsecurity: "true"
+    enable-owasp-modsecurity-crs: "true"
+    modsecurity-snippet: |
+      SecRuleEngine On
+      SecRequestBodyAccess On
+      SecAuditLog /dev/stdout
+      SecAuditLogFormat JSON
+      SecAuditEngine RelevantOnly
+
+  # Admission webhooks
+  admissionWebhooks:
+    enabled: true
+    failurePolicy: Fail
+    port: 8443
+
+    patch:
+      enabled: true
+      image:
+        repository: registry.k8s.io/ingress-nginx/kube-webhook-certgen
+        tag: v20230407
+        pullPolicy: IfNotPresent
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    fsGroup: 101
+    supplementalGroups: [101]
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Container security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 101
+    capabilities:
+      drop:
+        - ALL
+      add:
+        - NET_BIND_SERVICE
+
+  # Lifecycle hooks
+  lifecycle:
+    preStop:
+      exec:
+        command:
+          - /wait-shutdown
+
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+  # Topology spread constraints
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+          app.kubernetes.io/component: controller
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+          app.kubernetes.io/component: controller
+
+  # Affinity rules
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - ingress-nginx
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - controller
+            topologyKey: kubernetes.io/hostname
+
+# Default backend
+defaultBackend:
+  enabled: true
+  name: defaultbackend
+  image:
+    repository: registry.k8s.io/defaultbackend-amd64
+    tag: "1.5"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  minAvailable: 1
+
+  resources:
+    limits:
+      cpu: 10m
+      memory: 20Mi
+    requests:
+      cpu: 10m
+      memory: 20Mi
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+
+# RBAC
+rbac:
+  create: true
+  scope: false
+
+# Service account
+serviceAccount:
+  create: true
+  name: ingress-nginx
+  automountServiceAccountToken: true
+
+# PSP (deprecated in K8s 1.25+)
+podSecurityPolicy:
+  enabled: false

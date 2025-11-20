@@ -1,0 +1,189 @@
+---
+# Strict mTLS for all services in llm-analytics namespace
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: llm-analytics
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Authorization policy - default deny all
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: llm-analytics
+spec:
+  {}
+
+---
+# Allow traffic to event-ingestion service
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: event-ingestion-policy
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: event-ingestion
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["ingress-nginx"]
+    - source:
+        principals: ["cluster.local/ns/llm-analytics/sa/api"]
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+        paths: ["/api/v1/events", "/api/v1/events/batch", "/health", "/ready", "/metrics"]
+
+---
+# Allow traffic to API service
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-policy
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: api
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["ingress-nginx"]
+    - source:
+        namespaces: ["llm-analytics"]
+        principals: ["*"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+
+---
+# Allow Prometheus scraping
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus
+  namespace: llm-analytics
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["monitoring"]
+        principals: ["cluster.local/ns/monitoring/sa/prometheus"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/metrics"]
+
+---
+# Service-to-service authorization
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: service-to-service
+  namespace: llm-analytics
+spec:
+  action: ALLOW
+  rules:
+  # API can call event-ingestion
+  - from:
+    - source:
+        principals: ["cluster.local/ns/llm-analytics/sa/api"]
+    to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/events"]
+    when:
+    - key: request.auth.claims[iss]
+      values: ["llm-analytics-hub"]
+
+  # All services can access TimescaleDB
+  - to:
+    - operation:
+        ports: ["5432"]
+    when:
+    - key: source.namespace
+      values: ["llm-analytics"]
+
+  # All services can access Redis
+  - to:
+    - operation:
+        ports: ["6379"]
+    when:
+    - key: source.namespace
+      values: ["llm-analytics"]
+
+  # All services can access Kafka
+  - to:
+    - operation:
+        ports: ["9092"]
+    when:
+    - key: source.namespace
+      values: ["llm-analytics"]
+
+---
+# Request authentication with JWT
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: api
+  jwtRules:
+  - issuer: "llm-analytics-hub"
+    audiences:
+    - "llm-analytics-api"
+    jwksUri: "https://keycloak.llm-analytics.com/realms/llm-analytics/protocol/openid-connect/certs"
+    forwardOriginalToken: true
+
+---
+# Destination rule for mTLS
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: default-mtls
+  namespace: llm-analytics
+spec:
+  host: "*.llm-analytics.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# Certificate for services
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: llm-analytics-mtls
+  namespace: llm-analytics
+spec:
+  secretName: llm-analytics-mtls-cert
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  subject:
+    organizations:
+    - llm-analytics
+  commonName: "*.llm-analytics.svc.cluster.local"
+  dnsNames:
+  - "*.llm-analytics.svc.cluster.local"
+  - "llm-analytics.svc.cluster.local"
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+  - client auth

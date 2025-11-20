@@ -1,0 +1,403 @@
+---
+# Strimzi Kafka Operator Helm Values
+# Alternative deployment using Strimzi operator for simplified management
+
+# Global settings
+nameOverride: "kafka"
+fullnameOverride: "kafka"
+
+# Namespace
+namespace: kafka
+
+# Strimzi operator configuration
+strimzi:
+  enabled: true
+  version: "0.38.0"
+
+  # Operator settings
+  operator:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 200m
+        memory: 384Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Watch namespaces
+    watchNamespaces:
+    - kafka
+
+    # Feature gates
+    featureGates: "+UseStrimziPodSets"
+
+# Kafka cluster configuration
+kafka:
+  enabled: true
+
+  # Kafka version
+  version: 3.6.1
+
+  # Cluster name
+  name: kafka
+
+  # Number of Kafka replicas
+  replicas: 3
+
+  # Kafka configuration
+  config:
+    # Replication
+    default.replication.factor: 3
+    min.insync.replicas: 2
+    offsets.topic.replication.factor: 3
+    transaction.state.log.replication.factor: 3
+    transaction.state.log.min.isr: 2
+
+    # Performance
+    num.network.threads: 8
+    num.io.threads: 16
+    socket.send.buffer.bytes: 1048576
+    socket.receive.buffer.bytes: 1048576
+    socket.request.max.bytes: 104857600
+
+    # Log settings
+    log.retention.hours: 168
+    log.retention.bytes: 536870912000
+    log.segment.bytes: 1073741824
+    log.segment.ms: 86400000
+    compression.type: lz4
+
+    # High availability
+    unclean.leader.election.enable: false
+    auto.leader.rebalance.enable: true
+
+    # Topic management
+    auto.create.topics.enable: false
+    delete.topic.enable: true
+
+  # Listeners
+  listeners:
+    # Internal listener
+    - name: internal
+      port: 9092
+      type: internal
+      tls: true
+      authentication:
+        type: scram-sha-512
+
+    # External listener
+    - name: external
+      port: 9094
+      type: loadbalancer
+      tls: true
+      authentication:
+        type: scram-sha-512
+      configuration:
+        bootstrap:
+          annotations:
+            service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+            service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+  # Storage configuration
+  storage:
+    type: jbod
+    volumes:
+    - id: 0
+      type: persistent-claim
+      size: 500Gi
+      class: fast-ssd
+      deleteClaim: false
+    - id: 1
+      type: persistent-claim
+      size: 100Gi
+      class: fast-ssd
+      deleteClaim: false
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: "2"
+      memory: 16Gi
+    limits:
+      cpu: "4"
+      memory: 16Gi
+
+  # JVM options
+  jvmOptions:
+    -Xms: 8192m
+    -Xmx: 8192m
+    javaSystemProperties:
+    - name: sun.net.inetaddr.ttl
+      value: "60"
+
+  # Rack awareness
+  rack:
+    topologyKey: topology.kubernetes.io/zone
+
+  # Metrics
+  metrics:
+    enabled: true
+
+  # Template for pod customization
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: strimzi.io/name
+                operator: In
+                values:
+                - kafka-kafka
+            topologyKey: kubernetes.io/hostname
+
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9404"
+
+# Zookeeper configuration
+zookeeper:
+  enabled: true
+
+  # Number of Zookeeper replicas
+  replicas: 3
+
+  # Storage
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: fast-ssd
+    deleteClaim: false
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 4Gi
+    limits:
+      cpu: "1"
+      memory: 4Gi
+
+  # JVM options
+  jvmOptions:
+    -Xms: 3072m
+    -Xmx: 3072m
+
+  # Metrics
+  metrics:
+    enabled: true
+
+  # Template
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: strimzi.io/name
+                operator: In
+                values:
+                - kafka-zookeeper
+            topologyKey: kubernetes.io/hostname
+
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+
+# Entity Operator (Topic & User)
+entityOperator:
+  enabled: true
+
+  # Topic Operator
+  topicOperator:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # User Operator
+  userOperator:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Kafka Exporter for metrics
+kafkaExporter:
+  enabled: true
+  groupRegex: ".*"
+  topicRegex: "llm-.*"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Cruise Control for rebalancing
+cruiseControl:
+  enabled: true
+
+  config:
+    default.goals: >
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.RackAwareGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.ReplicaCapacityGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.DiskCapacityGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.NetworkInboundCapacityGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.NetworkOutboundCapacityGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.CpuCapacityGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.ReplicaDistributionGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.LeaderReplicaDistributionGoal,
+      com.linkedin.kafka.cruisecontrol.analyzer.goals.LeaderBytesInDistributionGoal
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# TLS configuration
+tls:
+  enabled: true
+
+  # Use cert-manager for certificate generation
+  certManager:
+    enabled: true
+    issuerRef:
+      name: kafka-ca-issuer
+      kind: Issuer
+
+# Authentication
+authentication:
+  type: scram-sha-512
+
+  # Users to create
+  users:
+  - name: admin
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+      - resource:
+          type: cluster
+        operations:
+        - All
+
+  - name: llm-analytics-producer
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+      - resource:
+          type: topic
+          patternType: prefix
+          name: llm-
+        operations:
+        - Write
+        - Describe
+        - Create
+
+  - name: llm-analytics-consumer
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+      - resource:
+          type: topic
+          patternType: prefix
+          name: llm-
+        operations:
+        - Read
+        - Describe
+      - resource:
+          type: group
+          patternType: prefix
+          name: llm-analytics-
+        operations:
+        - Read
+
+# Monitoring
+monitoring:
+  enabled: true
+
+  # Prometheus
+  prometheus:
+    enabled: true
+    operator: true
+
+  # Grafana dashboards
+  grafana:
+    enabled: true
+    dashboards:
+      enabled: true
+
+# Backup
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+
+  s3:
+    enabled: false
+    bucket: ""
+    region: "us-east-1"
+
+# Network policies
+networkPolicy:
+  enabled: true
+
+  # Ingress rules
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: llm-analytics
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+
+  # Egress rules
+  egress:
+  - to:
+    - namespaceSelector: {}
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Security Context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Service Account
+serviceAccount:
+  create: true
+  name: kafka
+  annotations: {}

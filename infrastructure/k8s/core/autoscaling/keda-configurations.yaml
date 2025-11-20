@@ -1,0 +1,363 @@
+# KEDA (Kubernetes Event-Driven Autoscaling) Helm Values
+# Helm chart: kedacore/keda
+# Version: 2.13.0+
+
+# Install KEDA operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+---
+# KEDA Helm values would go in a separate file, but here are the ScaledObjects
+
+# ScaledObject for Kafka consumer based on lag
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: kafka-consumer-scaler
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: kafka-consumer
+    kind: Deployment
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 3
+  maxReplicaCount: 30
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+          - type: Pods
+            value: 5
+            periodSeconds: 30
+  triggers:
+  # Kafka trigger
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka-headless.llm-analytics.svc:9092
+      consumerGroup: llm-analytics-consumer
+      topic: analytics-events
+      lagThreshold: "1000"
+      offsetResetPolicy: latest
+      allowIdleConsumers: "false"
+  # Prometheus trigger for backup scaling
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-operated.monitoring.svc:9090
+      metricName: kafka_consumergroup_lag
+      threshold: "5000"
+      query: |
+        sum(kafka_consumergroup_lag{consumergroup="llm-analytics-consumer"})
+---
+# ScaledObject for Redis queue depth
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: redis-queue-processor
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: queue-processor
+    kind: Deployment
+  pollingInterval: 15
+  cooldownPeriod: 180
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  - type: redis
+    metadata:
+      address: redis-cluster.llm-analytics.svc:6379
+      listName: processing-queue
+      listLength: "50"
+      databaseIndex: "0"
+      enableTLS: "false"
+---
+# ScaledObject for HTTP request rate
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: api-http-scaler
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: llm-analytics-api
+    kind: Deployment
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 3
+  maxReplicaCount: 50
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-operated.monitoring.svc:9090
+      metricName: http_requests_per_second
+      threshold: "1000"
+      query: |
+        sum(rate(http_requests_total{job="llm-analytics-api"}[2m]))
+---
+# ScaledObject for cron-based scaling (predictive)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: scheduled-scaler
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: batch-processor
+    kind: Deployment
+  pollingInterval: 60
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  triggers:
+  # Scale up during business hours (9 AM - 6 PM UTC)
+  - type: cron
+    metadata:
+      timezone: UTC
+      start: 0 9 * * *
+      end: 0 18 * * *
+      desiredReplicas: "5"
+  # Scale down during off-hours
+  - type: cron
+    metadata:
+      timezone: UTC
+      start: 0 18 * * *
+      end: 0 9 * * *
+      desiredReplicas: "1"
+---
+# ScaledObject for PostgreSQL connection pool
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: db-connection-scaler
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: db-worker
+    kind: Deployment
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 2
+  maxReplicaCount: 15
+  triggers:
+  - type: postgresql
+    metadata:
+      connectionString: postgresql://timescaledb.llm-analytics.svc:5432/analytics?sslmode=require
+      query: "SELECT COUNT(*) FROM pg_stat_activity WHERE state = 'active'"
+      targetQueryValue: "10"
+    authenticationRef:
+      name: postgresql-trigger-auth
+---
+# TriggerAuthentication for PostgreSQL
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: postgresql-trigger-auth
+  namespace: llm-analytics
+spec:
+  secretTargetRef:
+  - parameter: connectionString
+    name: timescaledb-credentials
+    key: connection-string
+---
+# ScaledObject for CPU-based scaling with external metrics
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cpu-memory-scaler
+  namespace: llm-analytics
+spec:
+  scaleTargetRef:
+    name: analytics-worker
+    kind: Deployment
+  pollingInterval: 30
+  cooldownPeriod: 180
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  - type: cpu
+    metricType: Utilization
+    metadata:
+      value: "70"
+  - type: memory
+    metricType: Utilization
+    metadata:
+      value: "80"
+---
+# ScaledJob for batch processing
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: batch-analytics-job
+  namespace: llm-analytics
+spec:
+  jobTargetRef:
+    template:
+      metadata:
+        labels:
+          app: batch-analytics
+      spec:
+        restartPolicy: Never
+        containers:
+        - name: processor
+          image: llm-analytics/batch-processor:latest
+          resources:
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+  pollingInterval: 60
+  maxReplicaCount: 10
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  scalingStrategy:
+    strategy: "accurate"
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka-headless.llm-analytics.svc:9092
+      consumerGroup: batch-processor
+      topic: batch-jobs
+      lagThreshold: "100"
+---
+# Cluster Autoscaler configuration (for node autoscaling)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-config
+  namespace: kube-system
+data:
+  cluster-autoscaler.yaml: |
+    # Cluster Autoscaler settings
+    autoscaling:
+      enabled: true
+
+      # Minimum and maximum node counts per node group
+      node_groups:
+        - name: worker-nodes
+          min_size: 3
+          max_size: 50
+        - name: gpu-nodes
+          min_size: 0
+          max_size: 10
+        - name: spot-nodes
+          min_size: 0
+          max_size: 20
+
+      # Scale down configuration
+      scale_down:
+        enabled: true
+        delay_after_add: 10m
+        delay_after_delete: 10s
+        delay_after_failure: 3m
+        unneeded_time: 10m
+        utilization_threshold: 0.5
+
+      # Scale up configuration
+      scale_up:
+        max_node_provision_time: 15m
+
+      # Resource limits
+      resource_limits:
+        cpu: 100
+        memory: 500Gi
+        gpu: 10
+
+      # Skip nodes with specific labels
+      skip_nodes_with_system_pods: true
+      skip_nodes_with_local_storage: false
+
+      # Balance similar node groups
+      balance_similar_node_groups: true
+
+      # Expendable pods (can be evicted during scale down)
+      expendable_pods_priority_cutoff: -10
+---
+# KEDA metrics server configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keda-metrics-config
+  namespace: keda
+data:
+  metrics.yaml: |
+    # Custom metrics configuration
+    metrics:
+      # Kafka metrics
+      kafka:
+        enabled: true
+        poll_interval: 30s
+
+      # Redis metrics
+      redis:
+        enabled: true
+        poll_interval: 15s
+
+      # Prometheus metrics
+      prometheus:
+        enabled: true
+        server: http://prometheus-operated.monitoring.svc:9090
+
+      # External metrics API
+      external:
+        enabled: true
+
+    # Logging
+    logging:
+      level: info
+      format: json
+---
+# PrometheusRule for KEDA monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: keda-alerts
+  namespace: keda
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: keda
+    interval: 60s
+    rules:
+    - alert: KEDAScalerErrors
+      expr: |
+        increase(keda_scaler_errors_total[5m]) > 5
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "KEDA scaler experiencing errors"
+        description: "Scaler {{ $labels.scaler }} has {{ $value }} errors in the last 5 minutes"
+
+    - alert: KEDAScaledObjectNotActive
+      expr: |
+        keda_scaledobject_ready_status == 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "KEDA ScaledObject not active"
+        description: "ScaledObject {{ $labels.namespace }}/{{ $labels.scaledobject }} is not active"
+
+    - alert: KEDAMetricsServerDown
+      expr: |
+        up{job="keda-metrics-apiserver"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "KEDA metrics server is down"
+        description: "KEDA metrics server is not responding"

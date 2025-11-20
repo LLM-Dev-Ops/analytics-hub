@@ -1,0 +1,145 @@
+---
+# Redis Cluster ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cluster-config
+  namespace: llm-analytics-hub
+data:
+  redis.conf: |
+    cluster-enabled yes
+    cluster-config-file /data/nodes.conf
+    cluster-node-timeout 5000
+    appendonly yes
+    protected-mode no
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+
+---
+# Redis Cluster StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-cluster
+    component: cache
+spec:
+  serviceName: redis-cluster-service
+  replicas: 6
+  selector:
+    matchLabels:
+      app: redis-cluster
+  template:
+    metadata:
+      labels:
+        app: redis-cluster
+        component: cache
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+          args:
+            - /conf/redis.conf
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          ports:
+            - containerPort: 6379
+              name: client
+            - containerPort: 16379
+              name: gossip
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-hub-secrets
+                  key: REDIS_PASSWORD
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - --pass
+                - $(REDIS_PASSWORD)
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - --pass
+                - $(REDIS_PASSWORD)
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: conf
+          configMap:
+            name: redis-cluster-config
+            items:
+              - key: redis.conf
+                path: redis.conf
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 20Gi
+
+---
+# Redis Cluster Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-service
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-cluster
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: redis-cluster
+  ports:
+    - name: client
+      port: 6379
+      targetPort: 6379
+    - name: gossip
+      port: 16379
+      targetPort: 16379
+
+---
+# Redis Cluster Headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: llm-analytics-hub
+  labels:
+    app: redis-cluster
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-cluster
+  ports:
+    - name: client
+      port: 6379
+      targetPort: 6379

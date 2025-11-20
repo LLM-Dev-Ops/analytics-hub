@@ -1,0 +1,488 @@
+---
+# Backup Orchestrator ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-orchestrator-config
+  namespace: llm-analytics-hub
+  labels:
+    app: backup-orchestrator
+    component: backup
+data:
+  backup-config.json: |
+    {
+      "databases": {
+        "timescaledb": {
+          "type": "postgresql",
+          "backup_method": "pgbackrest",
+          "schedule": "0 2 * * *",
+          "retention": {
+            "full": 7,
+            "incremental": 30
+          },
+          "s3_bucket": "llm-analytics-backups",
+          "s3_prefix": "timescaledb",
+          "compression": "zstd",
+          "encryption": true
+        },
+        "redis": {
+          "type": "redis",
+          "backup_method": "rdb",
+          "schedule": "0 * * * *",
+          "retention": {
+            "hourly": 24,
+            "daily": 7
+          },
+          "s3_bucket": "llm-analytics-backups",
+          "s3_prefix": "redis",
+          "compression": "gzip",
+          "encryption": true
+        },
+        "kafka": {
+          "type": "kafka",
+          "backup_method": "mirror",
+          "schedule": "0 3 * * *",
+          "retention": {
+            "daily": 7
+          },
+          "s3_bucket": "llm-analytics-backups",
+          "s3_prefix": "kafka",
+          "compression": "gzip",
+          "encryption": true
+        }
+      },
+      "notifications": {
+        "slack_webhook": "${SLACK_WEBHOOK_URL}",
+        "email": "ops@example.com"
+      },
+      "verify": {
+        "enabled": true,
+        "schedule": "0 4 1 * *"
+      }
+    }
+
+---
+# Backup Orchestrator CronJob for TimescaleDB
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timescaledb-backup
+  namespace: llm-analytics-hub
+  labels:
+    app: backup-orchestrator
+    component: timescaledb-backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup-orchestrator
+            component: timescaledb-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-orchestrator-sa
+          containers:
+            - name: backup
+              image: pgbackrest/pgbackrest:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  #!/bin/bash
+                  set -e
+
+                  echo "Starting TimescaleDB backup at $(date)"
+
+                  # Configure pgBackRest
+                  cat > /etc/pgbackrest.conf <<EOF
+                  [global]
+                  repo1-type=s3
+                  repo1-s3-bucket=${S3_BUCKET}
+                  repo1-s3-endpoint=${S3_ENDPOINT}
+                  repo1-s3-key=${AWS_ACCESS_KEY_ID}
+                  repo1-s3-key-secret=${AWS_SECRET_ACCESS_KEY}
+                  repo1-s3-region=${AWS_REGION}
+                  repo1-path=/timescaledb
+                  repo1-retention-full=7
+                  repo1-retention-diff=30
+                  repo1-cipher-type=aes-256-cbc
+                  repo1-cipher-pass=${ENCRYPTION_KEY}
+                  compress-type=zst
+                  compress-level=3
+
+                  [llm_analytics]
+                  pg1-host=timescaledb-service
+                  pg1-port=5432
+                  pg1-path=/var/lib/postgresql/data
+                  pg1-user=postgres
+                  EOF
+
+                  # Determine backup type (full on Sunday, incremental otherwise)
+                  DAY_OF_WEEK=$(date +%u)
+                  if [ "$DAY_OF_WEEK" -eq 7 ]; then
+                    BACKUP_TYPE="full"
+                  else
+                    BACKUP_TYPE="incr"
+                  fi
+
+                  # Execute backup
+                  pgbackrest --stanza=llm_analytics --type=$BACKUP_TYPE backup
+
+                  # Verify backup
+                  pgbackrest --stanza=llm_analytics info
+
+                  # Export metrics
+                  echo "database_backup_success{database=\"timescaledb\",type=\"$BACKUP_TYPE\"} 1" | curl -X POST --data-binary @- http://pushgateway:9091/metrics/job/backup-orchestrator/instance/timescaledb
+
+                  echo "TimescaleDB backup completed successfully at $(date)"
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: analytics-hub-secrets
+                      key: DB_PASSWORD
+                - name: S3_BUCKET
+                  value: "llm-analytics-backups"
+                - name: S3_ENDPOINT
+                  value: "s3.amazonaws.com"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: secret-access-key
+                - name: AWS_REGION
+                  value: "us-east-1"
+                - name: ENCRYPTION_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-encryption-key
+                      key: key
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+
+---
+# Backup Orchestrator CronJob for Redis
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: llm-analytics-hub
+  labels:
+    app: backup-orchestrator
+    component: redis-backup
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup-orchestrator
+            component: redis-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-orchestrator-sa
+          containers:
+            - name: backup
+              image: redis:7-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  #!/bin/sh
+                  set -e
+
+                  echo "Starting Redis backup at $(date)"
+
+                  # Install AWS CLI
+                  apk add --no-cache aws-cli gzip
+
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_DIR="/tmp/redis-backup"
+                  mkdir -p $BACKUP_DIR
+
+                  # Get list of Redis nodes
+                  REDIS_NODES=$(redis-cli -h redis-cluster-service -a $REDIS_PASSWORD cluster nodes | grep master | awk '{print $2}' | cut -d'@' -f1)
+
+                  for NODE in $REDIS_NODES; do
+                    NODE_ID=$(echo $NODE | cut -d':' -f1)
+                    echo "Backing up Redis node: $NODE_ID"
+
+                    # Trigger BGSAVE
+                    redis-cli -h $NODE_ID -a $REDIS_PASSWORD BGSAVE
+
+                    # Wait for BGSAVE to complete
+                    while [ "$(redis-cli -h $NODE_ID -a $REDIS_PASSWORD LASTSAVE)" = "$(redis-cli -h $NODE_ID -a $REDIS_PASSWORD LASTSAVE)" ]; do
+                      sleep 5
+                    done
+
+                    # Copy RDB file
+                    kubectl cp llm-analytics-hub/$NODE_ID:/data/dump.rdb $BACKUP_DIR/$NODE_ID-dump.rdb
+
+                    # Compress
+                    gzip $BACKUP_DIR/$NODE_ID-dump.rdb
+                  done
+
+                  # Upload to S3
+                  tar -czf /tmp/redis-backup-$TIMESTAMP.tar.gz -C $BACKUP_DIR .
+                  aws s3 cp /tmp/redis-backup-$TIMESTAMP.tar.gz s3://$S3_BUCKET/redis/redis-backup-$TIMESTAMP.tar.gz --sse AES256
+
+                  # Cleanup old backups (keep last 24 hourly, 7 daily)
+                  aws s3 ls s3://$S3_BUCKET/redis/ | while read -r line; do
+                    BACKUP_DATE=$(echo $line | awk '{print $4}' | cut -d'-' -f3 | cut -d'.' -f1)
+                    DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+                    if [ $DAYS_OLD -gt 7 ]; then
+                      BACKUP_FILE=$(echo $line | awk '{print $4}')
+                      aws s3 rm s3://$S3_BUCKET/redis/$BACKUP_FILE
+                    fi
+                  done
+
+                  # Export metrics
+                  echo "database_backup_success{database=\"redis\",type=\"rdb\"} 1" | curl -X POST --data-binary @- http://pushgateway:9091/metrics/job/backup-orchestrator/instance/redis
+
+                  echo "Redis backup completed successfully at $(date)"
+              env:
+                - name: REDIS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: analytics-hub-secrets
+                      key: REDIS_PASSWORD
+                - name: S3_BUCKET
+                  value: "llm-analytics-backups"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: secret-access-key
+                - name: AWS_REGION
+                  value: "us-east-1"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+
+---
+# Backup Orchestrator CronJob for Kafka
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kafka-backup
+  namespace: llm-analytics-hub
+  labels:
+    app: backup-orchestrator
+    component: kafka-backup
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup-orchestrator
+            component: kafka-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-orchestrator-sa
+          containers:
+            - name: backup
+              image: confluentinc/cp-kafka:7.5.0
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  #!/bin/bash
+                  set -e
+
+                  echo "Starting Kafka backup at $(date)"
+
+                  # Install AWS CLI
+                  yum install -y aws-cli gzip
+
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_DIR="/tmp/kafka-backup"
+                  mkdir -p $BACKUP_DIR
+
+                  # Get list of topics
+                  TOPICS=$(kafka-topics --bootstrap-server kafka-headless:9092 --list)
+
+                  # Backup topic metadata
+                  for TOPIC in $TOPICS; do
+                    echo "Backing up topic: $TOPIC"
+                    kafka-topics --bootstrap-server kafka-headless:9092 --describe --topic $TOPIC > $BACKUP_DIR/$TOPIC-metadata.txt
+                  done
+
+                  # Backup Zookeeper data
+                  kubectl exec -n llm-analytics-hub zookeeper-0 -- zkCli.sh -server localhost:2181 dump / > $BACKUP_DIR/zookeeper-dump.txt
+
+                  # Create archive
+                  tar -czf /tmp/kafka-backup-$TIMESTAMP.tar.gz -C $BACKUP_DIR .
+
+                  # Upload to S3
+                  aws s3 cp /tmp/kafka-backup-$TIMESTAMP.tar.gz s3://$S3_BUCKET/kafka/kafka-backup-$TIMESTAMP.tar.gz --sse AES256
+
+                  # Cleanup old backups (keep last 7 days)
+                  aws s3 ls s3://$S3_BUCKET/kafka/ | while read -r line; do
+                    BACKUP_DATE=$(echo $line | awk '{print $4}' | cut -d'-' -f3 | cut -d'.' -f1)
+                    DAYS_OLD=$(( ($(date +%s) - $(date -d "$BACKUP_DATE" +%s)) / 86400 ))
+                    if [ $DAYS_OLD -gt 7 ]; then
+                      BACKUP_FILE=$(echo $line | awk '{print $4}')
+                      aws s3 rm s3://$S3_BUCKET/kafka/$BACKUP_FILE
+                    fi
+                  done
+
+                  # Export metrics
+                  echo "database_backup_success{database=\"kafka\",type=\"metadata\"} 1" | curl -X POST --data-binary @- http://pushgateway:9091/metrics/job/backup-orchestrator/instance/kafka
+
+                  echo "Kafka backup completed successfully at $(date)"
+              env:
+                - name: S3_BUCKET
+                  value: "llm-analytics-backups"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: secret-access-key
+                - name: AWS_REGION
+                  value: "us-east-1"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+
+---
+# Backup Verification CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verification
+  namespace: llm-analytics-hub
+  labels:
+    app: backup-orchestrator
+    component: backup-verification
+spec:
+  schedule: "0 4 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup-orchestrator
+            component: backup-verification
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-orchestrator-sa
+          containers:
+            - name: verify
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - /scripts/verify-backup.sh
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              env:
+                - name: S3_BUCKET
+                  value: "llm-analytics-backups"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-s3-credentials
+                      key: secret-access-key
+                - name: AWS_REGION
+                  value: "us-east-1"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: backup-scripts
+                defaultMode: 0755
+
+---
+# Backup Orchestrator Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-orchestrator-sa
+  namespace: llm-analytics-hub
+
+---
+# Backup Orchestrator Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-orchestrator-role
+  namespace: llm-analytics-hub
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+
+---
+# Backup Orchestrator RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-orchestrator-rolebinding
+  namespace: llm-analytics-hub
+subjects:
+  - kind: ServiceAccount
+    name: backup-orchestrator-sa
+    namespace: llm-analytics-hub
+roleRef:
+  kind: Role
+  name: backup-orchestrator-role
+  apiGroup: rbac.authorization.k8s.io

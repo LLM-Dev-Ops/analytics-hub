@@ -1,0 +1,246 @@
+################################################################################
+# LLM Analytics Hub - GCP GKE Infrastructure
+# Example Terraform Variables Configuration
+#
+# Copy this file to terraform.tfvars and customize the values
+# cp terraform.tfvars.example terraform.tfvars
+################################################################################
+
+################################################################################
+# Project Configuration
+################################################################################
+
+project_id  = "my-gcp-project-id"
+region      = "us-central1"
+environment = "prod"
+cost_center = "llm-analytics"
+
+################################################################################
+# Network Configuration
+################################################################################
+
+network_name    = "llm-analytics-vpc"
+subnet_name     = "llm-analytics-subnet"
+subnet_cidr     = "10.0.0.0/20"
+
+# Secondary IP ranges for pods and services
+pods_cidr_name      = "pods"
+pods_cidr_range     = "10.4.0.0/14"
+services_cidr_name  = "services"
+services_cidr_range = "10.8.0.0/20"
+
+# Master node CIDR
+master_ipv4_cidr_block = "172.16.0.0/28"
+
+# Master authorized networks (optional - for accessing the cluster from specific IPs)
+master_authorized_networks = [
+  {
+    cidr_block   = "203.0.113.0/24"
+    display_name = "Office Network"
+  },
+  # Add more authorized networks as needed
+]
+
+################################################################################
+# GKE Cluster Configuration
+################################################################################
+
+cluster_name           = "llm-analytics-cluster"
+kubernetes_version     = "1.28"
+enable_autopilot       = false
+release_channel        = "STABLE"
+
+# Private cluster settings
+enable_private_nodes    = true
+enable_private_endpoint = false
+
+# Default node pool settings
+remove_default_node_pool = true
+initial_node_count       = 1
+
+################################################################################
+# Node Pool Configuration
+################################################################################
+
+# System Node Pool (for system components like kube-dns, metrics-server)
+system_pool_config = {
+  machine_type    = "n2-standard-4"
+  min_nodes       = 2
+  max_nodes       = 4
+  disk_size_gb    = 100
+  disk_type       = "pd-standard"
+  preemptible     = false
+  spot            = false
+  local_ssd_count = 0
+}
+
+# Application Node Pool (for application workloads)
+app_pool_config = {
+  machine_type    = "n2-standard-8"
+  min_nodes       = 3
+  max_nodes       = 10
+  disk_size_gb    = 150
+  disk_type       = "pd-balanced"
+  preemptible     = false
+  spot            = false
+  local_ssd_count = 0
+}
+
+# Database Node Pool (for stateful workloads like databases)
+db_pool_config = {
+  machine_type    = "n2-highmem-8"
+  min_nodes       = 3
+  max_nodes       = 6
+  disk_size_gb    = 200
+  disk_type       = "pd-ssd"
+  preemptible     = false
+  spot            = false
+  local_ssd_count = 1
+}
+
+# Preemptible/Spot Node Pool (for cost optimization on non-critical workloads)
+preemptible_pool_config = {
+  machine_type    = "n2-standard-4"
+  min_nodes       = 0
+  max_nodes       = 10
+  disk_size_gb    = 100
+  disk_type       = "pd-standard"
+  preemptible     = false
+  spot            = true
+  local_ssd_count = 0
+}
+
+################################################################################
+# Security Configuration
+################################################################################
+
+enable_workload_identity     = true
+enable_binary_authorization  = true
+enable_shielded_nodes        = true
+enable_secure_boot           = true
+enable_integrity_monitoring  = true
+enable_network_policy        = true
+enable_intranode_visibility  = true
+
+################################################################################
+# Monitoring & Logging Configuration
+################################################################################
+
+enable_cloud_logging             = true
+enable_cloud_monitoring          = true
+logging_components               = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+monitoring_enable_managed_prometheus = true
+enable_cost_allocation           = true
+
+################################################################################
+# Maintenance & Upgrade Configuration
+################################################################################
+
+maintenance_start_time = "03:00"
+maintenance_duration   = "4h"
+maintenance_recurrence = "FREQ=WEEKLY;BYDAY=SU"
+
+enable_auto_repair  = true
+enable_auto_upgrade = true
+
+################################################################################
+# Resource Management Configuration
+################################################################################
+
+resource_limits = {
+  max_pods_per_node = 110
+}
+
+enable_vertical_pod_autoscaling   = true
+enable_horizontal_pod_autoscaling = true
+
+################################################################################
+# Backup & DR Configuration
+################################################################################
+
+enable_backup_restore       = true
+backup_plan_retention_days = 30
+
+################################################################################
+# Development/Staging Overrides (uncomment for non-prod environments)
+################################################################################
+
+# For Development Environment
+# environment = "dev"
+#
+# system_pool_config = {
+#   machine_type    = "n2-standard-2"
+#   min_nodes       = 1
+#   max_nodes       = 2
+#   disk_size_gb    = 50
+#   disk_type       = "pd-standard"
+#   preemptible     = false
+#   spot            = false
+#   local_ssd_count = 0
+# }
+#
+# app_pool_config = {
+#   machine_type    = "n2-standard-4"
+#   min_nodes       = 1
+#   max_nodes       = 3
+#   disk_size_gb    = 100
+#   disk_type       = "pd-standard"
+#   preemptible     = false
+#   spot            = true
+#   local_ssd_count = 0
+# }
+#
+# db_pool_config = {
+#   machine_type    = "n2-highmem-4"
+#   min_nodes       = 1
+#   max_nodes       = 2
+#   disk_size_gb    = 100
+#   disk_type       = "pd-balanced"
+#   preemptible     = false
+#   spot            = false
+#   local_ssd_count = 0
+# }
+#
+# enable_backup_restore = false
+# enable_cost_allocation = false
+
+################################################################################
+# For Staging Environment
+################################################################################
+
+# environment = "staging"
+#
+# system_pool_config = {
+#   machine_type    = "n2-standard-2"
+#   min_nodes       = 1
+#   max_nodes       = 3
+#   disk_size_gb    = 75
+#   disk_type       = "pd-standard"
+#   preemptible     = false
+#   spot            = false
+#   local_ssd_count = 0
+# }
+#
+# app_pool_config = {
+#   machine_type    = "n2-standard-4"
+#   min_nodes       = 2
+#   max_nodes       = 6
+#   disk_size_gb    = 100
+#   disk_type       = "pd-balanced"
+#   preemptible     = false
+#   spot            = false
+#   local_ssd_count = 0
+# }
+#
+# db_pool_config = {
+#   machine_type    = "n2-highmem-4"
+#   min_nodes       = 2
+#   max_nodes       = 4
+#   disk_size_gb    = 150
+#   disk_type       = "pd-ssd"
+#   preemptible     = false
+#   spot            = false
+#   local_ssd_count = 0
+# }
+#
+# backup_plan_retention_days = 14

@@ -1,0 +1,149 @@
+# General Configuration
+resource_prefix = "llmhub"
+environment     = "production"
+location        = "eastus2"
+availability_zones = ["1", "2", "3"]
+
+common_tags = {
+  Project     = "LLM-Analytics-Hub"
+  Environment = "Production"
+  ManagedBy   = "Terraform"
+  Owner       = "Platform-Team"
+  CostCenter  = "Engineering"
+}
+
+# Network Configuration
+vnet_address_space                   = "10.0.0.0/16"
+aks_subnet_address_prefix            = "10.0.1.0/24"
+database_subnet_address_prefix       = "10.0.2.0/24"
+appgw_subnet_address_prefix          = "10.0.3.0/24"
+private_endpoint_subnet_address_prefix = "10.0.4.0/24"
+service_cidr                         = "10.1.0.0/16"
+dns_service_ip                       = "10.1.0.10"
+
+# Network Features
+enable_nat_gateway          = true
+enable_application_gateway  = false
+enable_custom_route_table   = false
+load_balancer_outbound_ip_count = 2
+
+# Allowed CIDR blocks for cluster access
+# For production, restrict to your corporate network or VPN
+allowed_cidr_blocks = [
+  "0.0.0.0/0"  # Change this in production!
+]
+
+# AKS Cluster Configuration
+kubernetes_version        = "1.28.3"
+aks_sku_tier             = "Standard"  # Free, Standard, or Premium
+automatic_channel_upgrade = "stable"   # patch, rapid, node-image, stable, none
+enable_private_cluster   = false       # Set to true for enhanced security
+enable_azure_ad_rbac     = true
+enable_pod_identity      = false       # Deprecated, use workload identity
+enable_host_encryption   = true
+enable_flux              = false       # GitOps with Flux
+enable_dapr              = false       # Dapr runtime
+
+# System Node Pool (Critical system components)
+system_node_pool_vm_size              = "Standard_D4s_v5"
+system_node_pool_enable_auto_scaling  = true
+system_node_pool_node_count           = 3
+system_node_pool_min_count            = 2
+system_node_pool_max_count            = 5
+
+# Application Node Pool (Application workloads)
+app_node_pool_vm_size              = "Standard_D8s_v5"
+app_node_pool_enable_auto_scaling  = true
+app_node_pool_node_count           = 3
+app_node_pool_min_count            = 3
+app_node_pool_max_count            = 10
+
+# Database Node Pool (Stateful workloads with Premium SSD)
+db_node_pool_vm_size              = "Standard_E8s_v5"
+db_node_pool_enable_auto_scaling  = true
+db_node_pool_node_count           = 3
+db_node_pool_min_count            = 3
+db_node_pool_max_count            = 6
+
+# Spot Instance Node Pool (Cost savings for fault-tolerant workloads)
+enable_spot_node_pool              = true
+spot_node_pool_vm_size             = "Standard_D8s_v5"
+spot_node_pool_enable_auto_scaling = true
+spot_node_pool_node_count          = 0
+spot_node_pool_min_count           = 0
+spot_node_pool_max_count           = 10
+spot_max_price                     = -1  # -1 means max price is the current on-demand price
+
+# GPU Node Pool (Machine Learning workloads)
+enable_gpu_node_pool              = false  # Set to true if ML workloads require GPU
+gpu_node_pool_vm_size             = "Standard_NC6s_v3"
+gpu_node_pool_enable_auto_scaling = true
+gpu_node_pool_node_count          = 0
+gpu_node_pool_min_count           = 0
+gpu_node_pool_max_count           = 3
+
+# Monitoring Node Pool (Dedicated monitoring stack)
+enable_monitoring_node_pool      = false  # Set to true for dedicated monitoring nodes
+monitoring_node_pool_vm_size     = "Standard_D4s_v5"
+monitoring_node_pool_node_count  = 3
+
+# Container Registry Configuration
+acr_sku                     = "Premium"  # Basic, Standard, or Premium
+acr_enable_private_endpoint = true
+acr_enable_content_trust    = false
+acr_georeplications = [
+  # "westus2",
+  # "northeurope"
+]
+
+# Log Analytics Configuration
+log_analytics_sku            = "PerGB2018"
+log_analytics_retention_days = 30  # 30-730 days
+
+# Key Vault Configuration
+key_vault_network_acls_default_action = "Deny"  # Allow or Deny
+enable_key_vault_rbac                 = true
+enable_key_vault_private_endpoint     = true
+
+# Security Configuration
+enable_defender          = true
+security_contact_email   = "security@example.com"
+security_contact_phone   = "+1-555-555-5555"
+alert_email_address      = "alerts@example.com"
+
+# Azure Policy Assignments
+azure_policy_assignments = {
+  # Example policies - uncomment and configure as needed
+  # enforce_https = {
+  #   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/1a5b4dca-0b6f-4cf5-907c-56316bc1bf3d"
+  #   parameters = null
+  # }
+}
+
+# Workload Identities
+workload_identities = {
+  app-backend = {
+    namespace            = "default"
+    service_account      = "app-backend-sa"
+    required_permissions = ["storage", "keyvault"]
+  }
+  app-frontend = {
+    namespace            = "default"
+    service_account      = "app-frontend-sa"
+    required_permissions = ["keyvault"]
+  }
+  observatory = {
+    namespace            = "monitoring"
+    service_account      = "observatory-sa"
+    required_permissions = ["storage"]
+  }
+  sentinel = {
+    namespace            = "security"
+    service_account      = "sentinel-sa"
+    required_permissions = ["keyvault"]
+  }
+}
+
+# Provider Configuration
+skip_provider_registration      = false
+prevent_resource_group_deletion = true

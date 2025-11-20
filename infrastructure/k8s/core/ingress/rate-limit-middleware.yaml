@@ -1,0 +1,261 @@
+---
+# Rate Limiting Configuration for API endpoints
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-rate-limit-config
+  namespace: ingress-nginx
+data:
+  # Rate limit zones configuration
+  rate-limit-zones: |
+    # Global rate limit: 100 req/s per IP
+    limit_req_zone $binary_remote_addr zone=global:10m rate=100r/s;
+
+    # API rate limit: 50 req/s per IP
+    limit_req_zone $binary_remote_addr zone=api:10m rate=50r/s;
+
+    # Auth endpoints: 10 req/min per IP
+    limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
+
+    # Analytics ingestion: 1000 req/s per IP
+    limit_req_zone $binary_remote_addr zone=analytics:10m rate=1000r/s;
+
+    # Per user rate limiting (using JWT sub claim)
+    limit_req_zone $jwt_claim_sub zone=user:10m rate=100r/s;
+---
+# Ingress for LLM Analytics API with rate limiting
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-analytics-api
+  namespace: llm-analytics
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+
+    # Connection limits
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+
+    # Custom rate limit configuration
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      limit_req zone=global burst=200 nodelay;
+      limit_req_status 429;
+
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://*.llm-analytics.io"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    nginx.ingress.kubernetes.io/cors-max-age: "3600"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/server-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';" always;
+
+    # SSL configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # Backend protocol
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+    # Session affinity
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "llm-analytics-route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "3600"
+
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+
+    # Body size
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  tls:
+  - hosts:
+    - api.llm-analytics.io
+    secretName: llm-analytics-api-tls
+  rules:
+  - host: api.llm-analytics.io
+    http:
+      paths:
+      # Analytics ingestion endpoints - higher rate limit
+      - path: /v1/events
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-api
+            port:
+              number: 8080
+
+      # API endpoints - standard rate limit
+      - path: /v1/api
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-api
+            port:
+              number: 8080
+
+      # Health check endpoint - no rate limit
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: llm-analytics-api
+            port:
+              number: 8080
+---
+# Ingress for authentication endpoints with strict rate limiting
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-analytics-auth
+  namespace: llm-analytics
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+    # Strict rate limiting for auth endpoints
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      limit_req zone=auth burst=20 nodelay;
+      limit_req_status 429;
+
+    # Security headers
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - auth.llm-analytics.io
+    secretName: llm-analytics-auth-tls
+  rules:
+  - host: auth.llm-analytics.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-auth
+            port:
+              number: 8080
+---
+# Ingress for frontend application
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-analytics-frontend
+  namespace: llm-analytics
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+    # Moderate rate limiting for frontend
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+
+    # SSL configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # Caching for static assets
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+      }
+spec:
+  tls:
+  - hosts:
+    - llm-analytics.io
+    - www.llm-analytics.io
+    secretName: llm-analytics-frontend-tls
+  rules:
+  - host: llm-analytics.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-frontend
+            port:
+              number: 80
+  - host: www.llm-analytics.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-analytics-frontend
+            port:
+              number: 80
+---
+# ModSecurity WAF Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: modsecurity-config
+  namespace: ingress-nginx
+data:
+  modsecurity.conf: |
+    # Basic ModSecurity configuration
+    SecRuleEngine On
+    SecRequestBodyAccess On
+    SecResponseBodyAccess Off
+    SecRequestBodyLimit 13107200
+    SecRequestBodyNoFilesLimit 131072
+    SecRequestBodyLimitAction Reject
+    SecPcreMatchLimit 100000
+    SecPcreMatchLimitRecursion 100000
+
+    # Audit logging
+    SecAuditEngine RelevantOnly
+    SecAuditLogRelevantStatus "^(?:5|4(?!04))"
+    SecAuditLogParts ABIJDEFHZ
+    SecAuditLogType Serial
+    SecAuditLog /dev/stdout
+    SecAuditLogFormat JSON
+
+    # Debug logging
+    SecDebugLog /dev/stdout
+    SecDebugLogLevel 0
+
+    # Anomaly scoring
+    SecDefaultAction "phase:1,log,auditlog,pass"
+    SecDefaultAction "phase:2,log,auditlog,pass"
+
+  crs-setup.conf: |
+    # OWASP CRS Configuration
+    SecAction \
+      "id:900000,\
+       phase:1,\
+       nolog,\
+       pass,\
+       t:none,\
+       setvar:tx.paranoia_level=1,\
+       setvar:tx.blocking_paranoia_level=1,\
+       setvar:tx.anomaly_score_threshold=5,\
+       setvar:tx.inbound_anomaly_score_threshold=5,\
+       setvar:tx.outbound_anomaly_score_threshold=4"
+
+    # Request exclusions for false positives
+    SecRule REQUEST_URI "@beginsWith /v1/events" \
+      "id:1000,\
+       phase:1,\
+       pass,\
+       nolog,\
+       ctl:ruleRemoveById=942100"

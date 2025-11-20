@@ -1,0 +1,261 @@
+---
+# S3 Configuration for Backups
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-s3-config
+  namespace: llm-analytics-hub
+  labels:
+    app: backup
+    component: configuration
+data:
+  s3.conf: |
+    # S3 Backup Configuration
+    # Primary backup bucket
+    S3_BUCKET=llm-analytics-backups
+    S3_REGION=us-east-1
+    S3_ENDPOINT=s3.amazonaws.com
+
+    # Backup paths
+    TIMESCALEDB_PREFIX=timescaledb
+    REDIS_PREFIX=redis
+    KAFKA_PREFIX=kafka
+    REPORTS_PREFIX=reports
+
+    # Storage class (STANDARD, INTELLIGENT_TIERING, GLACIER)
+    S3_STORAGE_CLASS=INTELLIGENT_TIERING
+
+    # Encryption
+    S3_ENCRYPTION=AES256
+
+    # Lifecycle policies
+    LIFECYCLE_ENABLED=true
+
+  lifecycle-policy.json: |
+    {
+      "Rules": [
+        {
+          "Id": "TimescaleDB-Backup-Lifecycle",
+          "Status": "Enabled",
+          "Filter": {
+            "Prefix": "timescaledb/"
+          },
+          "Transitions": [
+            {
+              "Days": 30,
+              "StorageClass": "STANDARD_IA"
+            },
+            {
+              "Days": 90,
+              "StorageClass": "GLACIER"
+            }
+          ],
+          "Expiration": {
+            "Days": 365
+          }
+        },
+        {
+          "Id": "Redis-Backup-Lifecycle",
+          "Status": "Enabled",
+          "Filter": {
+            "Prefix": "redis/"
+          },
+          "Transitions": [
+            {
+              "Days": 7,
+              "StorageClass": "STANDARD_IA"
+            },
+            {
+              "Days": 30,
+              "StorageClass": "GLACIER"
+            }
+          ],
+          "Expiration": {
+            "Days": 90
+          }
+        },
+        {
+          "Id": "Kafka-Backup-Lifecycle",
+          "Status": "Enabled",
+          "Filter": {
+            "Prefix": "kafka/"
+          },
+          "Transitions": [
+            {
+              "Days": 14,
+              "StorageClass": "STANDARD_IA"
+            },
+            {
+              "Days": 60,
+              "StorageClass": "GLACIER"
+            }
+          ],
+          "Expiration": {
+            "Days": 180
+          }
+        },
+        {
+          "Id": "Reports-Lifecycle",
+          "Status": "Enabled",
+          "Filter": {
+            "Prefix": "reports/"
+          },
+          "Expiration": {
+            "Days": 90
+          }
+        }
+      ]
+    }
+
+  bucket-policy.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "DenyUnencryptedObjectUploads",
+          "Effect": "Deny",
+          "Principal": "*",
+          "Action": "s3:PutObject",
+          "Resource": "arn:aws:s3:::llm-analytics-backups/*",
+          "Condition": {
+            "StringNotEquals": {
+              "s3:x-amz-server-side-encryption": "AES256"
+            }
+          }
+        },
+        {
+          "Sid": "RequireSecureTransport",
+          "Effect": "Deny",
+          "Principal": "*",
+          "Action": "s3:*",
+          "Resource": [
+            "arn:aws:s3:::llm-analytics-backups",
+            "arn:aws:s3:::llm-analytics-backups/*"
+          ],
+          "Condition": {
+            "Bool": {
+              "aws:SecureTransport": "false"
+            }
+          }
+        }
+      ]
+    }
+
+---
+# S3 Bucket Setup Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: setup-s3-bucket
+  namespace: llm-analytics-hub
+  labels:
+    app: backup
+    component: setup
+spec:
+  template:
+    metadata:
+      labels:
+        app: backup
+        component: setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: amazon/aws-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -e
+
+              echo "Setting up S3 bucket for backups..."
+
+              # Create bucket if it doesn't exist
+              if ! aws s3 ls "s3://$S3_BUCKET" 2>/dev/null; then
+                echo "Creating S3 bucket: $S3_BUCKET"
+                aws s3 mb "s3://$S3_BUCKET" --region "$AWS_REGION"
+              else
+                echo "S3 bucket already exists: $S3_BUCKET"
+              fi
+
+              # Enable versioning
+              echo "Enabling versioning..."
+              aws s3api put-bucket-versioning \
+                --bucket "$S3_BUCKET" \
+                --versioning-configuration Status=Enabled
+
+              # Enable encryption
+              echo "Enabling encryption..."
+              aws s3api put-bucket-encryption \
+                --bucket "$S3_BUCKET" \
+                --server-side-encryption-configuration '{
+                  "Rules": [{
+                    "ApplyServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }]
+                }'
+
+              # Apply lifecycle policy
+              echo "Applying lifecycle policy..."
+              aws s3api put-bucket-lifecycle-configuration \
+                --bucket "$S3_BUCKET" \
+                --lifecycle-configuration file:///config/lifecycle-policy.json
+
+              # Apply bucket policy
+              echo "Applying bucket policy..."
+              aws s3api put-bucket-policy \
+                --bucket "$S3_BUCKET" \
+                --policy file:///config/bucket-policy.json
+
+              # Enable access logging
+              echo "Enabling access logging..."
+              aws s3api put-bucket-logging \
+                --bucket "$S3_BUCKET" \
+                --bucket-logging-status '{
+                  "LoggingEnabled": {
+                    "TargetBucket": "'"$S3_BUCKET"'",
+                    "TargetPrefix": "access-logs/"
+                  }
+                }'
+
+              # Create folder structure
+              echo "Creating folder structure..."
+              for prefix in timescaledb redis kafka reports access-logs; do
+                aws s3api put-object \
+                  --bucket "$S3_BUCKET" \
+                  --key "$prefix/" \
+                  --server-side-encryption AES256
+              done
+
+              echo "S3 bucket setup completed successfully"
+          env:
+            - name: S3_BUCKET
+              value: "llm-analytics-backups"
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-s3-credentials
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-s3-credentials
+                  key: secret-access-key
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: config
+          configMap:
+            name: backup-s3-config

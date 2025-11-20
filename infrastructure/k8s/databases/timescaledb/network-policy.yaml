@@ -1,0 +1,434 @@
+---
+# Default Deny All Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: timescaledb-default-deny
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: security
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# Allow TimescaleDB Pods to Communicate
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: timescaledb-internal
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from other TimescaleDB pods (replication)
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 8008  # Patroni REST API
+
+  # Allow from etcd
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: etcd
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 8008
+
+  # Allow from PgBouncer
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: pgbouncer
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow from backup jobs
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: pgbackrest
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow from Prometheus
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - protocol: TCP
+      port: 9187  # Postgres exporter
+
+  egress:
+  # Allow to other TimescaleDB pods
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 8008
+
+  # Allow to etcd
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: etcd
+    ports:
+    - protocol: TCP
+      port: 2379
+    - protocol: TCP
+      port: 2380
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    - podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow S3 for backups (adjust based on your S3 setup)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Allow from Application Pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: timescaledb-from-apps
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: timescaledb
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from application namespaces
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: llm-analytics-hub
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow from specific application pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: analytics
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: api
+    ports:
+    - protocol: TCP
+      port: 5432
+
+---
+# etcd Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: etcd-policy
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: etcd
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from TimescaleDB pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: timescaledb
+    ports:
+    - protocol: TCP
+      port: 2379
+
+  # Allow from other etcd pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: etcd
+    ports:
+    - protocol: TCP
+      port: 2379
+    - protocol: TCP
+      port: 2380
+
+  egress:
+  # Allow to other etcd pods
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: etcd
+    ports:
+    - protocol: TCP
+      port: 2379
+    - protocol: TCP
+      port: 2380
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# PgBouncer Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-policy
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from application pods
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: llm-analytics-hub
+    ports:
+    - protocol: TCP
+      port: 6432
+
+  # Allow from Prometheus
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - protocol: TCP
+      port: 9127
+
+  egress:
+  # Allow to TimescaleDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Backup Jobs Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-policy
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pgbackrest
+  policyTypes:
+  - Egress
+  egress:
+  # Allow to TimescaleDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow S3 for backups
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+  # Allow Kubernetes API
+  - to:
+    - namespaceSelector: {}
+    - podSelector:
+        matchLabels:
+          component: apiserver
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Pod Security Policy (if PSP is enabled)
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: timescaledb-psp
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: security
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+  - ALL
+  volumes:
+  - 'configMap'
+  - 'emptyDir'
+  - 'projected'
+  - 'secret'
+  - 'downwardAPI'
+  - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 999
+      max: 999
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 999
+      max: 999
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 999
+      max: 999
+  readOnlyRootFilesystem: false
+
+---
+# Security Context Constraints for OpenShift
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: timescaledb-scc
+  labels:
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: security
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+allowedCapabilities: []
+defaultAddCapabilities: []
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 999
+    max: 999
+priority: null
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+- ALL
+runAsUser:
+  type: MustRunAs
+  uid: 999
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+  - min: 999
+    max: 999
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret

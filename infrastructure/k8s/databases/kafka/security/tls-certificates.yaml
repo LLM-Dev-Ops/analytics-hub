@@ -1,0 +1,280 @@
+---
+# Certificate Issuer (cert-manager)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kafka-ca-issuer
+  namespace: kafka
+spec:
+  ca:
+    secretName: kafka-ca-secret
+
+---
+# Self-signed CA Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kafka-ca
+  namespace: kafka
+spec:
+  isCA: true
+  commonName: kafka-ca
+  secretName: kafka-ca-secret
+  duration: 87600h # 10 years
+  renewBefore: 720h # 30 days
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: kafka-selfsigned-issuer
+    kind: Issuer
+
+---
+# Self-signed issuer for CA
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kafka-selfsigned-issuer
+  namespace: kafka
+spec:
+  selfSigned: {}
+
+---
+# Kafka broker certificates
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kafka-broker-cert
+  namespace: kafka
+spec:
+  secretName: kafka-broker-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  commonName: kafka.kafka.svc.cluster.local
+  subject:
+    organizations:
+    - LLM Analytics Hub
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+  - server auth
+  - client auth
+  dnsNames:
+  - kafka
+  - kafka.kafka
+  - kafka.kafka.svc
+  - kafka.kafka.svc.cluster.local
+  - kafka-headless
+  - kafka-headless.kafka
+  - kafka-headless.kafka.svc
+  - kafka-headless.kafka.svc.cluster.local
+  - kafka-0.kafka-headless.kafka.svc.cluster.local
+  - kafka-1.kafka-headless.kafka.svc.cluster.local
+  - kafka-2.kafka-headless.kafka.svc.cluster.local
+  - kafka-0
+  - kafka-1
+  - kafka-2
+  - "*.kafka-headless.kafka.svc.cluster.local"
+  issuerRef:
+    name: kafka-ca-issuer
+    kind: Issuer
+
+---
+# Zookeeper certificates
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: zookeeper-cert
+  namespace: kafka
+spec:
+  secretName: zookeeper-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  commonName: zookeeper.kafka.svc.cluster.local
+  subject:
+    organizations:
+    - LLM Analytics Hub
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+  - server auth
+  - client auth
+  dnsNames:
+  - zookeeper
+  - zookeeper.kafka
+  - zookeeper.kafka.svc
+  - zookeeper.kafka.svc.cluster.local
+  - zookeeper-headless
+  - zookeeper-headless.kafka
+  - zookeeper-headless.kafka.svc
+  - zookeeper-headless.kafka.svc.cluster.local
+  - zookeeper-0.zookeeper-headless.kafka.svc.cluster.local
+  - zookeeper-1.zookeeper-headless.kafka.svc.cluster.local
+  - zookeeper-2.zookeeper-headless.kafka.svc.cluster.local
+  - zookeeper-0
+  - zookeeper-1
+  - zookeeper-2
+  - "*.zookeeper-headless.kafka.svc.cluster.local"
+  issuerRef:
+    name: kafka-ca-issuer
+    kind: Issuer
+
+---
+# Client certificates for applications
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kafka-client-cert
+  namespace: kafka
+spec:
+  secretName: kafka-client-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  commonName: kafka-client
+  subject:
+    organizations:
+    - LLM Analytics Hub
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+  - client auth
+  issuerRef:
+    name: kafka-ca-issuer
+    kind: Issuer
+
+---
+# ConfigMap with TLS setup scripts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-tls-scripts
+  namespace: kafka
+data:
+  generate-jks.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Generating JKS keystores from TLS certificates..."
+
+    # Convert PEM to PKCS12
+    openssl pkcs12 -export \
+      -in /tls/tls.crt \
+      -inkey /tls/tls.key \
+      -out /tmp/keystore.p12 \
+      -name kafka \
+      -password pass:${KEYSTORE_PASSWORD}
+
+    # Convert PKCS12 to JKS
+    keytool -importkeystore \
+      -srckeystore /tmp/keystore.p12 \
+      -srcstoretype PKCS12 \
+      -srcstorepass ${KEYSTORE_PASSWORD} \
+      -destkeystore /secrets/kafka.server.keystore.jks \
+      -deststoretype JKS \
+      -deststorepass ${KEYSTORE_PASSWORD} \
+      -destkeypass ${KEY_PASSWORD} \
+      -noprompt
+
+    # Import CA certificate to truststore
+    keytool -import \
+      -file /tls/ca.crt \
+      -alias CARoot \
+      -keystore /secrets/kafka.server.truststore.jks \
+      -storepass ${TRUSTSTORE_PASSWORD} \
+      -noprompt
+
+    echo "JKS keystores generated successfully"
+
+  verify-tls.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Verifying TLS certificates..."
+
+    # Verify certificate chain
+    openssl verify -CAfile /tls/ca.crt /tls/tls.crt
+
+    # Display certificate details
+    openssl x509 -in /tls/tls.crt -text -noout
+
+    # List keystore contents
+    keytool -list -v -keystore /secrets/kafka.server.keystore.jks -storepass ${KEYSTORE_PASSWORD}
+
+    # List truststore contents
+    keytool -list -v -keystore /secrets/kafka.server.truststore.jks -storepass ${TRUSTSTORE_PASSWORD}
+
+    echo "TLS verification complete"
+
+  test-connection.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Testing TLS connection to Kafka..."
+
+    # Test with openssl
+    echo "Q" | openssl s_client -connect kafka:9094 \
+      -CAfile /tls/ca.crt \
+      -cert /tls/tls.crt \
+      -key /tls/tls.key
+
+    echo "TLS connection test complete"
+
+---
+# Job to generate JKS keystores from certificates
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-generate-jks
+  namespace: kafka
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: tls-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: generate-jks
+        image: openjdk:11-jre-slim
+        command:
+        - /bin/bash
+        - /scripts/generate-jks.sh
+        env:
+        - name: KEYSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-keystore-password
+        - name: KEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-key-password
+        - name: TRUSTSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: ssl-truststore-password
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
+        - name: scripts
+          mountPath: /scripts
+        - name: secrets
+          mountPath: /secrets
+      volumes:
+      - name: tls
+        secret:
+          secretName: kafka-broker-tls
+      - name: scripts
+        configMap:
+          name: kafka-tls-scripts
+          defaultMode: 0755
+      - name: secrets
+        secret:
+          secretName: kafka-jks-secrets

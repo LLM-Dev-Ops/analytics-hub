@@ -1,0 +1,216 @@
+name: CI - Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ====================
+  # Rust Services Build and Test
+  # ====================
+  rust-build-test:
+    name: Rust - Build and Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, 1.75.0]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev libsasl2-dev cmake
+
+    - name: Check formatting
+      run: cargo fmt -- --check
+
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Build all binaries
+      run: |
+        cargo build --release --bin event-ingestion
+        cargo build --release --bin metrics-aggregation
+        cargo build --release --bin correlation-engine
+        cargo build --release --bin anomaly-detection
+        cargo build --release --bin forecasting
+
+    - name: Run tests
+      run: cargo test --all-features --verbose
+
+    - name: Run benchmarks (dry run)
+      run: cargo bench --no-run
+
+  # ====================
+  # TypeScript API Build and Test
+  # ====================
+  api-build-test:
+    name: API - Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: api/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./api
+      run: npm ci
+
+    - name: Lint
+      working-directory: ./api
+      run: npm run lint
+
+    - name: Type check
+      working-directory: ./api
+      run: npx tsc --noEmit
+
+    - name: Build
+      working-directory: ./api
+      run: npm run build
+
+    - name: Run tests
+      working-directory: ./api
+      run: npm test
+
+  # ====================
+  # Frontend Build and Test
+  # ====================
+  frontend-build-test:
+    name: Frontend - Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Lint
+      working-directory: ./frontend
+      run: npm run lint || true
+
+    - name: Type check
+      working-directory: ./frontend
+      run: npx tsc --noEmit || true
+
+    - name: Build
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm test || true
+
+  # ====================
+  # Security Scanning
+  # ====================
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner (filesystem)
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Rust security audit
+      run: |
+        cargo install cargo-audit
+        cargo audit
+
+    - name: npm audit (API)
+      working-directory: ./api
+      run: npm audit --audit-level=high || true
+
+    - name: npm audit (Frontend)
+      working-directory: ./frontend
+      run: npm audit --audit-level=high || true
+
+  # ====================
+  # Code Quality
+  # ====================
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          -Dsonar.projectKey=llm-analytics-hub
+          -Dsonar.organization=llm-analytics
+          -Dsonar.sources=src,api/src,frontend/src
+          -Dsonar.tests=tests,api/src/**/*.test.ts,frontend/src/**/*.test.tsx
+          -Dsonar.javascript.lcov.reportPaths=api/coverage/lcov.info,frontend/coverage/lcov.info

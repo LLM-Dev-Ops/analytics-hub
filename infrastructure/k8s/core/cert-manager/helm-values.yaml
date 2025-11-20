@@ -1,0 +1,185 @@
+# cert-manager Helm Values
+# Helm chart: jetstack/cert-manager
+# Version: v1.14.0+
+
+# Global configuration
+global:
+  leaderElection:
+    namespace: cert-manager
+
+  rbac:
+    create: true
+
+  podSecurityPolicy:
+    enabled: false
+    useAppArmor: true
+
+# Install CRDs
+installCRDs: true
+
+# Replica count for high availability
+replicaCount: 3
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Resource requests and limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+    - ALL
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Service account
+serviceAccount:
+  create: true
+  automountServiceAccountToken: true
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true
+    namespace: monitoring
+    prometheusInstance: default
+    interval: 60s
+    scrapeTimeout: 30s
+    labels:
+      prometheus: kube-prometheus
+
+# Webhook configuration
+webhook:
+  replicaCount: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop:
+      - ALL
+
+  timeoutSeconds: 30
+
+# CA Injector configuration
+cainjector:
+  enabled: true
+  replicaCount: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop:
+      - ALL
+
+# Startup API check
+startupAPICheck:
+  enabled: true
+  backoffLimit: 4
+
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop:
+      - ALL
+
+# Extra arguments
+extraArgs:
+  - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53
+  - --dns01-recursive-nameservers-only
+  - --enable-certificate-owner-ref=true
+
+# Affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - cert-manager
+          - key: app.kubernetes.io/component
+            operator: In
+            values:
+            - controller
+        topologyKey: kubernetes.io/hostname
+
+# Topology spread constraints
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: cert-manager
+        app.kubernetes.io/component: controller

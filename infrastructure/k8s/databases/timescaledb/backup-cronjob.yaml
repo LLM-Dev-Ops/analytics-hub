@@ -1,0 +1,463 @@
+---
+# pgBackRest ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbackrest-config
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+data:
+  pgbackrest.conf: |
+    [global]
+    repo1-type=s3
+    repo1-s3-region=${S3_REGION}
+    repo1-s3-endpoint=${S3_ENDPOINT}
+    repo1-s3-bucket=${S3_BUCKET}
+    repo1-s3-key=${AWS_ACCESS_KEY_ID}
+    repo1-s3-key-secret=${AWS_SECRET_ACCESS_KEY}
+    repo1-path=/pgbackrest
+    repo1-retention-full=7
+    repo1-retention-diff=4
+    repo1-retention-archive=30
+    repo1-cipher-type=aes-256-cbc
+    repo1-cipher-pass=${BACKUP_ENCRYPTION_KEY}
+
+    [global:archive-push]
+    compress-level=3
+
+    [global:archive-get]
+    process-max=2
+
+    [timescaledb]
+    pg1-host=timescaledb-rw.timescaledb.svc.cluster.local
+    pg1-port=5432
+    pg1-path=/var/lib/postgresql/data/pgdata
+    pg1-user=postgres
+    pg1-database=postgres
+
+    # Backup settings
+    archive-async=y
+    archive-push-queue-max=10GiB
+    compress-type=lz4
+    compress-level=3
+    process-max=4
+    log-level-console=info
+    log-level-file=debug
+    start-fast=y
+    stop-auto=y
+    delta=y
+
+  backup-full.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Starting full backup at $(date)"
+
+    # Load S3 credentials
+    export AWS_ACCESS_KEY_ID=$(cat /secrets/AWS_ACCESS_KEY_ID)
+    export AWS_SECRET_ACCESS_KEY=$(cat /secrets/AWS_SECRET_ACCESS_KEY)
+    export S3_BUCKET=$(cat /secrets/S3_BUCKET)
+    export S3_REGION=$(cat /secrets/S3_REGION)
+    export S3_ENDPOINT=$(cat /secrets/S3_ENDPOINT)
+
+    # Configure pgBackRest
+    envsubst < /config/pgbackrest.conf > /tmp/pgbackrest.conf
+
+    # Perform backup
+    pgbackrest --config=/tmp/pgbackrest.conf \
+      --stanza=timescaledb \
+      --type=full \
+      --log-path=/var/log/pgbackrest \
+      backup
+
+    # Verify backup
+    pgbackrest --config=/tmp/pgbackrest.conf \
+      --stanza=timescaledb \
+      --log-path=/var/log/pgbackrest \
+      info
+
+    echo "Full backup completed at $(date)"
+
+  backup-diff.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Starting differential backup at $(date)"
+
+    # Load S3 credentials
+    export AWS_ACCESS_KEY_ID=$(cat /secrets/AWS_ACCESS_KEY_ID)
+    export AWS_SECRET_ACCESS_KEY=$(cat /secrets/AWS_SECRET_ACCESS_KEY)
+    export S3_BUCKET=$(cat /secrets/S3_BUCKET)
+    export S3_REGION=$(cat /secrets/S3_REGION)
+    export S3_ENDPOINT=$(cat /secrets/S3_ENDPOINT)
+
+    # Configure pgBackRest
+    envsubst < /config/pgbackrest.conf > /tmp/pgbackrest.conf
+
+    # Perform backup
+    pgbackrest --config=/tmp/pgbackrest.conf \
+      --stanza=timescaledb \
+      --type=diff \
+      --log-path=/var/log/pgbackrest \
+      backup
+
+    echo "Differential backup completed at $(date)"
+
+  restore.sh: |
+    #!/bin/bash
+    set -e
+
+    RESTORE_TARGET="${1:-latest}"
+
+    echo "Starting restore to target: $RESTORE_TARGET"
+
+    # Load S3 credentials
+    export AWS_ACCESS_KEY_ID=$(cat /secrets/AWS_ACCESS_KEY_ID)
+    export AWS_SECRET_ACCESS_KEY=$(cat /secrets/AWS_SECRET_ACCESS_KEY)
+    export S3_BUCKET=$(cat /secrets/S3_BUCKET)
+    export S3_REGION=$(cat /secrets/S3_REGION)
+    export S3_ENDPOINT=$(cat /secrets/S3_ENDPOINT)
+
+    # Configure pgBackRest
+    envsubst < /config/pgbackrest.conf > /tmp/pgbackrest.conf
+
+    # Stop PostgreSQL
+    kubectl scale statefulset timescaledb --replicas=0 -n timescaledb
+
+    # Restore
+    if [ "$RESTORE_TARGET" = "latest" ]; then
+      pgbackrest --config=/tmp/pgbackrest.conf \
+        --stanza=timescaledb \
+        --log-path=/var/log/pgbackrest \
+        restore
+    else
+      pgbackrest --config=/tmp/pgbackrest.conf \
+        --stanza=timescaledb \
+        --type=time \
+        --target="$RESTORE_TARGET" \
+        --target-action=promote \
+        --log-path=/var/log/pgbackrest \
+        restore
+    fi
+
+    # Start PostgreSQL
+    kubectl scale statefulset timescaledb --replicas=3 -n timescaledb
+
+    echo "Restore completed at $(date)"
+
+---
+# Full Backup CronJob (Daily at 2 AM)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timescaledb-backup-full
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    backup-type: full
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM UTC
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbackrest
+        app.kubernetes.io/component: backup
+        backup-type: full
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200  # 2 hours timeout
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pgbackrest
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: timescaledb-backup
+
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            runAsNonRoot: true
+
+          containers:
+          - name: backup
+            image: pgbackrest/pgbackrest:2.49
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/bash
+            - /scripts/backup-full.sh
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: POSTGRES_PASSWORD
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: backup-logs
+              mountPath: /var/log/pgbackrest
+            resources:
+              requests:
+                cpu: 1000m
+                memory: 2Gi
+              limits:
+                cpu: 4000m
+                memory: 8Gi
+            securityContext:
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+
+          volumes:
+          - name: scripts
+            configMap:
+              name: pgbackrest-config
+              defaultMode: 0755
+          - name: config
+            configMap:
+              name: pgbackrest-config
+          - name: secrets
+            secret:
+              secretName: timescaledb-backup-s3
+          - name: backup-logs
+            emptyDir: {}
+
+---
+# Differential Backup CronJob (Every 6 hours)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timescaledb-backup-diff
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    backup-type: differential
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbackrest
+        app.kubernetes.io/component: backup
+        backup-type: differential
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: pgbackrest
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: timescaledb-backup
+
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            runAsNonRoot: true
+
+          containers:
+          - name: backup
+            image: pgbackrest/pgbackrest:2.49
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/bash
+            - /scripts/backup-diff.sh
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: POSTGRES_PASSWORD
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: backup-logs
+              mountPath: /var/log/pgbackrest
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                cpu: 2000m
+                memory: 4Gi
+            securityContext:
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+
+          volumes:
+          - name: scripts
+            configMap:
+              name: pgbackrest-config
+              defaultMode: 0755
+          - name: config
+            configMap:
+              name: pgbackrest-config
+          - name: secrets
+            secret:
+              secretName: timescaledb-backup-s3
+          - name: backup-logs
+            emptyDir: {}
+
+---
+# Backup Verification CronJob (Weekly)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timescaledb-backup-verify
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    backup-type: verification
+spec:
+  schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgbackrest
+        app.kubernetes.io/component: backup
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: timescaledb-backup
+
+          containers:
+          - name: verify
+            image: pgbackrest/pgbackrest:2.49
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              export AWS_ACCESS_KEY_ID=$(cat /secrets/AWS_ACCESS_KEY_ID)
+              export AWS_SECRET_ACCESS_KEY=$(cat /secrets/AWS_SECRET_ACCESS_KEY)
+              export S3_BUCKET=$(cat /secrets/S3_BUCKET)
+              export S3_REGION=$(cat /secrets/S3_REGION)
+              export S3_ENDPOINT=$(cat /secrets/S3_ENDPOINT)
+              envsubst < /config/pgbackrest.conf > /tmp/pgbackrest.conf
+              pgbackrest --config=/tmp/pgbackrest.conf --stanza=timescaledb info
+              pgbackrest --config=/tmp/pgbackrest.conf --stanza=timescaledb check
+            volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            resources:
+              requests:
+                cpu: 200m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+
+          volumes:
+          - name: config
+            configMap:
+              name: pgbackrest-config
+          - name: secrets
+            secret:
+              secretName: timescaledb-backup-s3
+
+---
+# Service Account for Backup Jobs
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: timescaledb-backup
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+
+---
+# Role for Backup Operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: timescaledb-backup
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/log
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+
+---
+# RoleBinding for Backup
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: timescaledb-backup
+  namespace: timescaledb
+  labels:
+    app.kubernetes.io/name: pgbackrest
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: timescaledb-backup
+subjects:
+- kind: ServiceAccount
+  name: timescaledb-backup
+  namespace: timescaledb

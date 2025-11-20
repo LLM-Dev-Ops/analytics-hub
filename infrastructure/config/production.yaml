@@ -1,0 +1,136 @@
+# LLM Analytics Hub - Production Environment Configuration
+
+environment: production
+
+cluster:
+  name: llm-analytics-hub-production
+  region: us-east-1
+  nodes:
+    count: 6
+    min: 6
+    max: 20
+    instance_type: m5.2xlarge
+    disk_size: 200
+
+database:
+  engine: postgres
+  version: "15"
+  instance_class: db.r6g.2xlarge
+  storage: 500
+  backup_retention: 30
+  multi_az: true
+  publicly_accessible: false
+  performance_insights: true
+  deletion_protection: true
+
+redis:
+  version: "7.0"
+  node_type: cache.r6g.xlarge
+  num_cache_clusters: 3
+  automatic_failover: true
+  multi_az: true
+  at_rest_encryption: true
+  transit_encryption: true
+
+kafka:
+  version: "3.5.1"
+  broker_nodes: 5
+  instance_type: kafka.m5.2xlarge
+  storage_per_broker: 1000
+  enhanced_monitoring: PER_TOPIC_PER_BROKER
+  encryption_at_rest: true
+  encryption_in_transit: true
+
+monitoring:
+  prometheus:
+    retention: 90d
+    storage: 200Gi
+  grafana:
+    enabled: true
+    ha: true
+  alertmanager:
+    enabled: true
+    ha: true
+  pagerduty:
+    enabled: true
+  slack:
+    enabled: true
+
+security:
+  network_policies: true
+  pod_security_policies: true
+  encryption_at_rest: true
+  tls_enabled: true
+  certificate_issuer: letsencrypt-prod
+  rbac:
+    enabled: true
+  service_mesh:
+    enabled: true
+    type: istio
+
+resources:
+  api:
+    replicas: 6
+    cpu_request: "1000m"
+    cpu_limit: "2000m"
+    memory_request: "2Gi"
+    memory_limit: "4Gi"
+    hpa:
+      enabled: true
+      min_replicas: 6
+      max_replicas: 20
+      cpu_threshold: 70
+      memory_threshold: 80
+
+  database:
+    cpu_request: "2000m"
+    cpu_limit: "4000m"
+    memory_request: "8Gi"
+    memory_limit: "16Gi"
+
+  redis:
+    cpu_request: "1000m"
+    cpu_limit: "2000m"
+    memory_request: "4Gi"
+    memory_limit: "8Gi"
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: 30
+  cross_region_backup: true
+  disaster_recovery: true
+
+logging:
+  level: info
+  format: json
+  centralized: true
+  retention: 90
+
+compliance:
+  audit_logging: true
+  encryption_required: true
+  data_retention_policy: 90
+  gdpr_compliant: true
+  hipaa_compliant: false
+  soc2_compliant: true
+
+disaster_recovery:
+  enabled: true
+  rpo_minutes: 60
+  rto_minutes: 240
+  backup_regions:
+    - us-west-2
+    - eu-west-1
+
+sla:
+  availability_target: 99.9
+  latency_p95_ms: 200
+  latency_p99_ms: 500
+  error_rate_max: 0.1
+
+features:
+  real_time_analytics: true
+  batch_processing: true
+  ml_models: true
+  advanced_analytics: true

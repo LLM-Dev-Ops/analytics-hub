@@ -1,0 +1,160 @@
+---
+# Default Deny All Ingress Traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Allow Ingress from Same Namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+
+---
+# Allow Ingress from Ingress Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/exposed: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8443
+
+---
+# Allow Ingress from Monitoring
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/monitoring: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 8080
+
+---
+# Allow DNS Traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: llm-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Allow Egress to Internet (HTTPS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-https
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/internet-access: "true"
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Database Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-network-policy
+  namespace: llm-analytics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/tier: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 3306
+    - protocol: TCP
+      port: 6379
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: database
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 3306
+    - protocol: TCP
+      port: 6379

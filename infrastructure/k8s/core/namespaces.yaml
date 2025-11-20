@@ -1,0 +1,143 @@
+---
+# Core Platform Namespaces for LLM Analytics Hub
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-analytics
+  labels:
+    name: llm-analytics
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    name: ingress-nginx
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    name: cert-manager
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+  labels:
+    name: logging
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    name: istio-system
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security
+  labels:
+    name: security
+    environment: production
+    managed-by: platform-team
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+# ResourceQuota for application namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: llm-analytics-quota
+  namespace: llm-analytics
+spec:
+  hard:
+    requests.cpu: "100"
+    requests.memory: 200Gi
+    limits.cpu: "200"
+    limits.memory: 400Gi
+    persistentvolumeclaims: "50"
+    services.loadbalancers: "5"
+---
+# ResourceQuota for monitoring namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: monitoring-quota
+  namespace: monitoring
+spec:
+  hard:
+    requests.cpu: "50"
+    requests.memory: 100Gi
+    limits.cpu: "100"
+    limits.memory: 200Gi
+    persistentvolumeclaims: "20"
+---
+# LimitRange for application namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: llm-analytics-limits
+  namespace: llm-analytics
+spec:
+  limits:
+  - max:
+      cpu: "8"
+      memory: 16Gi
+    min:
+      cpu: 10m
+      memory: 64Mi
+    default:
+      cpu: "1"
+      memory: 1Gi
+    defaultRequest:
+      cpu: 100m
+      memory: 256Mi
+    type: Container
+  - max:
+      cpu: "16"
+      memory: 32Gi
+    min:
+      cpu: 100m
+      memory: 256Mi
+    type: Pod

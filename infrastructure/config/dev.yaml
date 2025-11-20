@@ -1,0 +1,83 @@
+# LLM Analytics Hub - Development Environment Configuration
+
+environment: dev
+
+cluster:
+  name: llm-analytics-hub-dev
+  region: us-east-1
+  nodes:
+    count: 3
+    min: 2
+    max: 5
+    instance_type: t3.xlarge
+    disk_size: 100
+
+database:
+  engine: postgres
+  version: "15"
+  instance_class: db.t3.medium
+  storage: 50
+  backup_retention: 3
+  multi_az: false
+  publicly_accessible: false
+
+redis:
+  version: "7.0"
+  node_type: cache.t3.medium
+  num_cache_clusters: 1
+  automatic_failover: false
+
+kafka:
+  version: "3.5.1"
+  broker_nodes: 1
+  instance_type: kafka.t3.small
+  storage_per_broker: 100
+
+monitoring:
+  prometheus:
+    retention: 7d
+    storage: 20Gi
+  grafana:
+    enabled: true
+  alertmanager:
+    enabled: true
+
+security:
+  network_policies: true
+  pod_security_policies: false
+  encryption_at_rest: false
+  tls_enabled: false
+
+resources:
+  api:
+    replicas: 2
+    cpu_request: "250m"
+    cpu_limit: "500m"
+    memory_request: "256Mi"
+    memory_limit: "512Mi"
+
+  database:
+    cpu_request: "250m"
+    cpu_limit: "1000m"
+    memory_request: "512Mi"
+    memory_limit: "2Gi"
+
+  redis:
+    cpu_request: "100m"
+    cpu_limit: "500m"
+    memory_request: "256Mi"
+    memory_limit: "1Gi"
+
+backup:
+  enabled: false
+  schedule: "0 3 * * *"
+  retention: 3
+
+logging:
+  level: debug
+  format: json
+
+features:
+  real_time_analytics: true
+  batch_processing: false
+  ml_models: false

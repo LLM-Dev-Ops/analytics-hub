@@ -1,0 +1,214 @@
+---
+# Network Policy for Redis Cluster
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-cluster-policy
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cluster
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Allow from application namespaces
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: llm-analytics
+    - namespaceSelector:
+        matchLabels:
+          name: api-gateway
+    - namespaceSelector:
+        matchLabels:
+          name: analytics-workers
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Allow cluster communication between Redis nodes
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis
+          app.kubernetes.io/component: cluster
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 16379
+
+  # Allow from Sentinel
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis-sentinel
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Allow from monitoring namespace (Prometheus)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9121
+
+  # Allow from same namespace
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 16379
+
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow cluster communication
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 16379
+
+  # Allow to Sentinel
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis-sentinel
+    ports:
+    - protocol: TCP
+      port: 26379
+
+  # Allow external backup connections (S3)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Network Policy for Redis Sentinel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-sentinel-policy
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis-sentinel
+      app.kubernetes.io/component: sentinel
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Allow from application namespaces
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: llm-analytics
+    - namespaceSelector:
+        matchLabels:
+          name: api-gateway
+    ports:
+    - protocol: TCP
+      port: 26379
+
+  # Allow from Redis cluster nodes
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis
+    ports:
+    - protocol: TCP
+      port: 26379
+
+  # Allow Sentinel to Sentinel communication
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis-sentinel
+    ports:
+    - protocol: TCP
+      port: 26379
+
+  # Allow from monitoring (Prometheus)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9355
+
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow to Redis cluster
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Allow Sentinel to Sentinel communication
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis-sentinel
+    ports:
+    - protocol: TCP
+      port: 26379
+
+---
+# Deny all other traffic by default (optional, for strict security)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-default-deny
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  # Empty ingress/egress rules = deny all (overridden by more specific policies above)

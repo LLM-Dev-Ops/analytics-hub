@@ -1,0 +1,205 @@
+---
+# Headless Service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+
+---
+# Service for Client Connections (Load Balanced)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: metrics
+    port: 9121
+    targetPort: 9121
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    redis-role: master
+
+---
+# Individual Services for Each Pod (for cluster communication)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-0
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-0
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-0
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-1
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-1
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-1
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-2
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-2
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-2
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-3
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-3
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-4
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-4
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-4
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-5
+  namespace: redis-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cluster
+    statefulset.kubernetes.io/pod-name: redis-cluster-5
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+  selector:
+    statefulset.kubernetes.io/pod-name: redis-cluster-5

@@ -1,0 +1,256 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: kafka
+  labels:
+    app: kafka
+    component: messaging
+data:
+  server.properties: |
+    ############################# Server Basics #############################
+    # Broker ID is set dynamically in the StatefulSet
+
+    ############################# Socket Server Settings #############################
+    # Listeners
+    listeners=INTERNAL://:9092,EXTERNAL://:9094
+    advertised.listeners=INTERNAL://${HOSTNAME}.kafka-headless.kafka.svc.cluster.local:9092,EXTERNAL://${HOSTNAME}.kafka-external.kafka.svc.cluster.local:9094
+    listener.security.protocol.map=INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL
+    inter.broker.listener.name=INTERNAL
+
+    # Socket settings
+    num.network.threads=8
+    num.io.threads=16
+    socket.send.buffer.bytes=1048576
+    socket.receive.buffer.bytes=1048576
+    socket.request.max.bytes=104857600
+
+    ############################# Log Basics #############################
+    log.dirs=/var/lib/kafka/data
+    num.partitions=16
+    default.replication.factor=3
+    min.insync.replicas=2
+    num.recovery.threads.per.data.dir=2
+
+    ############################# Internal Topic Settings #############################
+    offsets.topic.replication.factor=3
+    transaction.state.log.replication.factor=3
+    transaction.state.log.min.isr=2
+
+    ############################# Log Retention Policy #############################
+    # Time-based retention (7 days)
+    log.retention.hours=168
+    log.retention.check.interval.ms=300000
+
+    # Size-based retention (500GB per partition)
+    log.retention.bytes=536870912000
+
+    # Segment settings
+    log.segment.bytes=1073741824
+    log.segment.ms=86400000
+    log.roll.hours=24
+
+    ############################# Log Cleanup Policy #############################
+    log.cleanup.policy=delete
+    log.cleaner.enable=true
+    log.cleaner.threads=2
+    log.cleaner.dedupe.buffer.size=134217728
+
+    ############################# Zookeeper #############################
+    zookeeper.connect=zookeeper-0.zookeeper-headless.kafka.svc.cluster.local:2181,zookeeper-1.zookeeper-headless.kafka.svc.cluster.local:2181,zookeeper-2.zookeeper-headless.kafka.svc.cluster.local:2181
+    zookeeper.connection.timeout.ms=18000
+    zookeeper.session.timeout.ms=18000
+
+    ############################# Group Coordinator Settings #############################
+    group.initial.rebalance.delay.ms=3000
+
+    ############################# Performance Tuning #############################
+    # Compression
+    compression.type=lz4
+
+    # Message size
+    message.max.bytes=10485760
+    replica.fetch.max.bytes=10485760
+
+    # Replication
+    replica.lag.time.max.ms=10000
+    replica.socket.receive.buffer.bytes=65536
+
+    # Network threads
+    num.replica.fetchers=4
+
+    ############################# High Availability #############################
+    # Unclean leader election
+    unclean.leader.election.enable=false
+
+    # Controlled shutdown
+    controlled.shutdown.enable=true
+    controlled.shutdown.max.retries=3
+
+    # Auto leader rebalance
+    auto.leader.rebalance.enable=true
+    leader.imbalance.check.interval.seconds=300
+    leader.imbalance.per.broker.percentage=10
+
+    ############################# Topic Configuration #############################
+    auto.create.topics.enable=false
+    delete.topic.enable=true
+
+    ############################# Security #############################
+    # SASL/SCRAM
+    sasl.enabled.mechanisms=SCRAM-SHA-512
+    sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
+
+    # SSL
+    ssl.keystore.location=/etc/kafka/secrets/kafka.server.keystore.jks
+    ssl.keystore.password=${SSL_KEYSTORE_PASSWORD}
+    ssl.key.password=${SSL_KEY_PASSWORD}
+    ssl.truststore.location=/etc/kafka/secrets/kafka.server.truststore.jks
+    ssl.truststore.password=${SSL_TRUSTSTORE_PASSWORD}
+    ssl.client.auth=required
+    ssl.endpoint.identification.algorithm=
+
+    # Authorization
+    authorizer.class.name=kafka.security.authorizer.AclAuthorizer
+    super.users=User:admin
+
+    # Security protocol
+    security.inter.broker.protocol=SASL_SSL
+
+    ############################# Rack Awareness #############################
+    # Set via KAFKA_RACK environment variable
+
+    ############################# JMX Monitoring #############################
+    # Metrics reporters
+    metric.reporters=io.confluent.metrics.reporter.ConfluentMetricsReporter
+    confluent.metrics.reporter.bootstrap.servers=localhost:9092
+    confluent.metrics.reporter.topic.replicas=3
+
+  kafka-env.sh: |
+    #!/bin/bash
+    # JVM Performance Options
+    export KAFKA_HEAP_OPTS="-Xmx8G -Xms8G"
+    export KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:G1HeapRegionSize=16M -XX:MinMetaspaceSize=96M -XX:MaxMetaspaceSize=256M -XX:+ExplicitGCInvokesConcurrent -XX:+ParallelRefProcEnabled -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC"
+
+    # GC Logging
+    export KAFKA_GC_LOG_OPTS="-Xlog:gc*:file=/var/log/kafka/gc.log:time,tags:filecount=10,filesize=100M"
+
+    # JMX Options
+    export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999 -Djava.rmi.server.hostname=127.0.0.1"
+
+    # Prometheus JMX Exporter
+    export KAFKA_OPTS="-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx-exporter/kafka-config.yml"
+
+    # Additional options
+    export KAFKA_OPTS="$KAFKA_OPTS -Djava.security.auth.login.config=/etc/kafka/config/kafka_server_jaas.conf"
+
+  kafka_server_jaas.conf: |
+    KafkaServer {
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="admin"
+        password="${KAFKA_ADMIN_PASSWORD}";
+    };
+
+    Client {
+        org.apache.zookeeper.server.auth.DigestLoginModule required
+        username="kafka"
+        password="${ZK_KAFKA_PASSWORD}";
+    };
+
+  log4j.properties: |
+    # Root logger
+    log4j.rootLogger=INFO, stdout, kafkaAppender
+
+    # Console appender
+    log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+    log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+    log4j.appender.stdout.layout.ConversionPattern=[%d] %p %m (%c)%n
+
+    # Kafka appender
+    log4j.appender.kafkaAppender=org.apache.log4j.RollingFileAppender
+    log4j.appender.kafkaAppender.File=/var/log/kafka/server.log
+    log4j.appender.kafkaAppender.MaxFileSize=100MB
+    log4j.appender.kafkaAppender.MaxBackupIndex=10
+    log4j.appender.kafkaAppender.layout=org.apache.log4j.PatternLayout
+    log4j.appender.kafkaAppender.layout.ConversionPattern=[%d] %p %m (%c)%n
+
+    # Change log levels
+    log4j.logger.kafka=INFO
+    log4j.logger.org.apache.kafka=INFO
+    log4j.logger.kafka.controller=INFO
+    log4j.logger.kafka.log.LogCleaner=INFO
+    log4j.logger.state.change.logger=INFO
+    log4j.logger.kafka.authorizer.logger=INFO
+
+  jmx-exporter-config.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    rules:
+    # Kafka broker metrics
+    - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+      labels:
+        clientId: "$3"
+        topic: "$4"
+        partition: "$5"
+    - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), brokerHost=(.+), brokerPort=(.+)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+      labels:
+        clientId: "$3"
+        broker: "$4:$5"
+    - pattern: kafka.server<type=(.+), name=(.+)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+    # Network metrics
+    - pattern: kafka.network<type=(.+), name=(.+), request=(.+)><>Value
+      name: kafka_network_$1_$2
+      type: GAUGE
+      labels:
+        request: "$3"
+    # Log metrics
+    - pattern: kafka.log<type=(.+), name=(.+), topic=(.+), partition=(.+)><>Value
+      name: kafka_log_$1_$2
+      type: GAUGE
+      labels:
+        topic: "$3"
+        partition: "$4"
+    # Controller metrics
+    - pattern: kafka.controller<type=(.+), name=(.+)><>Value
+      name: kafka_controller_$1_$2
+      type: GAUGE
+
+  init.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Starting Kafka initialization..."
+
+    # Extract broker ID from hostname
+    HOSTNAME=$(hostname -s)
+    if [[ $HOSTNAME =~ -([0-9]+)$ ]]; then
+        export KAFKA_BROKER_ID=${BASH_REMATCH[1]}
+    else
+        echo "Failed to extract broker ID from hostname"
+        exit 1
+    fi
+
+    echo "Kafka Broker ID: $KAFKA_BROKER_ID"
+
+    # Set rack awareness based on zone
+    if [ -n "$ZONE" ]; then
+        export KAFKA_RACK=$ZONE
+        echo "Kafka Rack: $KAFKA_RACK"
+    fi
+
+    # Create log directories
+    mkdir -p /var/lib/kafka/data
+    mkdir -p /var/log/kafka
+
+    # Set permissions
+    chmod -R 755 /var/lib/kafka
+    chmod -R 755 /var/log/kafka
+
+    echo "Initialization complete"

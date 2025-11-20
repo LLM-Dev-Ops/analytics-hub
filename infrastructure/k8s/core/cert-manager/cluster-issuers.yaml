@@ -1,0 +1,290 @@
+---
+# Let's Encrypt Staging Issuer (for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Let's Encrypt staging server
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Email for certificate expiration notifications
+    email: admin@llm-analytics.io
+
+    # Private key secret name
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+
+    # Solvers for HTTP-01 and DNS-01 challenges
+    solvers:
+    # HTTP-01 solver using NGINX Ingress
+    - http01:
+        ingress:
+          class: nginx
+          podTemplate:
+            spec:
+              nodeSelector:
+                kubernetes.io/os: linux
+              tolerations:
+              - key: node-role.kubernetes.io/master
+                operator: Exists
+                effect: NoSchedule
+
+    # DNS-01 solver for wildcard certificates (AWS Route53)
+    - dns01:
+        route53:
+          region: us-east-1
+          # Use IAM role for service account (IRSA)
+          # Alternatively, use accessKeyID/secretAccessKey
+          # accessKeyID: AKIAIOSFODNN7EXAMPLE
+          # secretAccessKeySecretRef:
+          #   name: route53-credentials
+          #   key: secret-access-key
+      selector:
+        dnsZones:
+        - "llm-analytics.io"
+
+    # DNS-01 solver for Google Cloud DNS
+    # - dns01:
+    #     cloudDNS:
+    #       project: llm-analytics-prod
+    #       serviceAccountSecretRef:
+    #         name: clouddns-dns01-solver-sa
+    #         key: key.json
+    #   selector:
+    #     dnsZones:
+    #     - "llm-analytics.io"
+
+    # DNS-01 solver for Azure DNS
+    # - dns01:
+    #     azureDNS:
+    #       subscriptionID: 12345678-9abc-def0-1234-567890abcdef
+    #       resourceGroupName: llm-analytics-rg
+    #       hostedZoneName: llm-analytics.io
+    #       environment: AzurePublicCloud
+    #       # Use managed identity or service principal
+    #       managedIdentity:
+    #         clientID: 12345678-9abc-def0-1234-567890abcdef
+    #   selector:
+    #     dnsZones:
+    #     - "llm-analytics.io"
+---
+# Let's Encrypt Production Issuer
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Let's Encrypt production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Email for certificate expiration notifications
+    email: admin@llm-analytics.io
+
+    # Private key secret name
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+
+    # Solvers for HTTP-01 and DNS-01 challenges
+    solvers:
+    # HTTP-01 solver using NGINX Ingress
+    - http01:
+        ingress:
+          class: nginx
+          podTemplate:
+            spec:
+              nodeSelector:
+                kubernetes.io/os: linux
+              tolerations:
+              - key: node-role.kubernetes.io/master
+                operator: Exists
+                effect: NoSchedule
+
+    # DNS-01 solver for wildcard certificates (AWS Route53)
+    - dns01:
+        route53:
+          region: us-east-1
+          # Use IAM role for service account (IRSA)
+          # hostededZoneID: Z1234567890ABC (optional)
+      selector:
+        dnsZones:
+        - "llm-analytics.io"
+---
+# Self-Signed Issuer (for development/internal services)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# CA Issuer using self-signed root
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ca-issuer
+spec:
+  ca:
+    secretName: ca-key-pair
+---
+# Self-signed root certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: selfsigned-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: llm-analytics-ca
+  secretName: ca-key-pair
+  duration: 87600h # 10 years
+  renewBefore: 720h # 30 days
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Wildcard certificate for staging
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-staging-cert
+  namespace: llm-analytics
+spec:
+  secretName: wildcard-staging-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  commonName: "*.llm-analytics.io"
+  dnsNames:
+  - "*.llm-analytics.io"
+  - "llm-analytics.io"
+  duration: 2160h # 90 days
+  renewBefore: 720h # 30 days before expiration
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+---
+# Wildcard certificate for production
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-prod-cert
+  namespace: llm-analytics
+spec:
+  secretName: wildcard-prod-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.llm-analytics.io"
+  dnsNames:
+  - "*.llm-analytics.io"
+  - "llm-analytics.io"
+  duration: 2160h # 90 days
+  renewBefore: 720h # 30 days before expiration
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+---
+# Certificate rotation policy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: certificate-rotation-policy
+  namespace: cert-manager
+data:
+  policy.yaml: |
+    # Certificate rotation policy
+    renewal:
+      # Renew certificates 30 days before expiration
+      renewBefore: 720h
+
+      # Retry failed renewals
+      retryInterval: 1h
+      maxRetries: 3
+
+    monitoring:
+      # Alert when certificates are close to expiration
+      expirationWarningDays: 30
+      expirationCriticalDays: 7
+
+    automation:
+      # Automatically rotate certificates
+      autoRotate: true
+
+      # Restart pods after certificate rotation
+      restartPods: true
+
+      # Namespaces to watch
+      watchNamespaces:
+      - llm-analytics
+      - monitoring
+      - logging
+---
+# PrometheusRule for certificate monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cert-manager-alerts
+  namespace: cert-manager
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: cert-manager
+    interval: 60s
+    rules:
+    - alert: CertificateExpiringSoon
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < (30 * 24 * 3600)
+      for: 1h
+      labels:
+        severity: warning
+      annotations:
+        summary: "Certificate {{ $labels.name }} expiring soon"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} will expire in less than 30 days"
+
+    - alert: CertificateExpiringCritical
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < (7 * 24 * 3600)
+      for: 15m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Certificate {{ $labels.name }} expiring very soon"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} will expire in less than 7 days"
+
+    - alert: CertificateRenewalFailed
+      expr: |
+        certmanager_certificate_ready_status{condition="False"} == 1
+      for: 1h
+      labels:
+        severity: critical
+      annotations:
+        summary: "Certificate renewal failed for {{ $labels.name }}"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} failed to renew"
+
+    - alert: CertificateNotReady
+      expr: |
+        certmanager_certificate_ready_status{condition="False"} == 1
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Certificate {{ $labels.name }} is not ready"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} is not in ready state"

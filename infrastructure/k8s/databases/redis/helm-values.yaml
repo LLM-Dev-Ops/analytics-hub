@@ -1,0 +1,322 @@
+---
+# Helm Values for Redis Cluster (Alternative to manual manifests)
+# Use with: helm install redis bitnami/redis-cluster -f helm-values.yaml
+
+# Global Configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "fast-ssd"
+  redis:
+    password: "CHANGE_ME_IN_PRODUCTION"
+
+# Cluster Configuration
+cluster:
+  enabled: true
+  nodes: 6
+  replicas: 1
+  externalAccess:
+    enabled: false
+
+# Image Configuration
+image:
+  registry: docker.io
+  repository: bitnami/redis-cluster
+  tag: 7.2-debian-11
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Redis Configuration
+redis:
+  # Redis port
+  port: 6379
+
+  # Use password authentication
+  usePassword: true
+  password: "CHANGE_ME_IN_PRODUCTION"
+  existingSecret: "redis-auth"
+  existingSecretPasswordKey: "password"
+
+  # Redis configuration file
+  configmap: |-
+    # Enable AOF persistence
+    appendonly yes
+    appendfsync everysec
+
+    # Memory management
+    maxmemory 6gb
+    maxmemory-policy allkeys-lru
+
+    # Lazy freeing
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    replica-lazy-flush yes
+
+    # Performance
+    io-threads 4
+    io-threads-do-reads yes
+
+    # Slow log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+  # TLS Configuration
+  tls:
+    enabled: false
+    certificatesSecret: "redis-tls"
+    certFilename: "tls.crt"
+    certKeyFilename: "tls.key"
+    certCAFilename: "ca.crt"
+
+# Persistence Configuration
+persistence:
+  enabled: true
+  path: /data
+  subPath: ""
+  storageClass: "fast-ssd"
+  accessModes:
+    - ReadWriteOnce
+  size: 100Gi
+  annotations: {}
+  selector: {}
+
+# Resource Configuration
+resources:
+  requests:
+    cpu: 2000m
+    memory: 8Gi
+  limits:
+    cpu: 4000m
+    memory: 16Gi
+
+# Security Context
+securityContext:
+  enabled: true
+  fsGroup: 999
+  runAsUser: 999
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 999
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Pod Configuration
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9121"
+
+podLabels:
+  app.kubernetes.io/part-of: llm-analytics-hub
+  environment: production
+
+# Affinity and Tolerations
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: redis-cluster
+        topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+          topologyKey: topology.kubernetes.io/zone
+
+tolerations: []
+
+# Node Selection
+nodeSelector: {}
+
+# Init Containers
+initContainers:
+  - name: system-init
+    image: redis:7.2-alpine
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+        sysctl -w net.core.somaxconn=65535
+        sysctl -w vm.overcommit_memory=1
+    securityContext:
+      runAsUser: 0
+      privileged: true
+
+# Update Strategy
+updateStrategy:
+  type: RollingUpdate
+
+# Service Configuration
+service:
+  type: ClusterIP
+  port: 6379
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+
+# Service Account
+serviceAccount:
+  create: true
+  name: "redis"
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 4
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: oliver006/redis_exporter
+    tag: v1.55.0-alpine
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  serviceMonitor:
+    enabled: true
+    namespace: redis-system
+    interval: 30s
+    scrapeTimeout: 10s
+    selector:
+      prometheus: kube-prometheus
+
+  prometheusRule:
+    enabled: true
+    namespace: redis-system
+    additionalLabels:
+      prometheus: kube-prometheus
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  ingressNSMatchLabels:
+    name: llm-analytics
+  ingressNSPodMatchLabels: {}
+
+# Sentinel Configuration (for HA monitoring)
+sentinel:
+  enabled: true
+  replicas: 3
+
+  image:
+    registry: docker.io
+    repository: bitnami/redis-sentinel
+    tag: 7.2-debian-11
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd"
+    size: 10Gi
+
+  quorum: 2
+  downAfterMilliseconds: 30000
+  failoverTimeout: 180000
+  parallelSyncs: 1
+
+  service:
+    type: ClusterIP
+    port: 26379
+
+  metrics:
+    enabled: true
+
+# Volume Permissions
+volumePermissions:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnami/bitnami-shell
+    tag: 11-debian-11
+
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+
+  image:
+    registry: docker.io
+    repository: redis
+    tag: 7.2-alpine
+
+  s3:
+    enabled: true
+    bucket: "llm-analytics-redis-backups"
+    region: "us-east-1"
+    prefix: "redis-cluster/"
+    # Credentials should be in redis-backup-s3 secret
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# System Configuration
+sysctlImage:
+  enabled: true
+  command:
+    - /bin/sh
+    - -c
+    - |
+      sysctl -w net.core.somaxconn=65535
+      sysctl -w vm.overcommit_memory=1
+      sysctl -w vm.swappiness=0
+  mountHostSys: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+
+# Additional Configuration
+extraEnvVars: []
+extraEnvVarsCM: ""
+extraEnvVarsSecret: ""
+
+# Monitoring and Observability
+monitoring:
+  grafanaDashboard:
+    enabled: true
+    namespace: monitoring

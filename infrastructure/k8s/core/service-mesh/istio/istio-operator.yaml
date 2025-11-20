@@ -1,0 +1,341 @@
+# Istio Operator Configuration
+# Install with: istioctl install -f istio-operator.yaml
+---
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-control-plane
+  namespace: istio-system
+spec:
+  # Istio profile - production ready
+  profile: production
+
+  # Hub and tag
+  hub: docker.io/istio
+  tag: 1.20.2
+
+  # Global configuration
+  meshConfig:
+    # Access logging
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "start_time": "%START_TIME%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "protocol": "%PROTOCOL%",
+        "response_code": "%RESPONSE_CODE%",
+        "response_flags": "%RESPONSE_FLAGS%",
+        "bytes_received": "%BYTES_RECEIVED%",
+        "bytes_sent": "%BYTES_SENT%",
+        "duration": "%DURATION%",
+        "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+        "x_forwarded_for": "%REQ(X-FORWARDED-FOR)%",
+        "user_agent": "%REQ(USER-AGENT)%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "authority": "%REQ(:AUTHORITY)%",
+        "upstream_host": "%UPSTREAM_HOST%",
+        "upstream_cluster": "%UPSTREAM_CLUSTER%",
+        "upstream_local_address": "%UPSTREAM_LOCAL_ADDRESS%",
+        "downstream_local_address": "%DOWNSTREAM_LOCAL_ADDRESS%",
+        "downstream_remote_address": "%DOWNSTREAM_REMOTE_ADDRESS%",
+        "route_name": "%ROUTE_NAME%"
+      }
+
+    # Default config for proxies
+    defaultConfig:
+      # Tracing configuration
+      tracing:
+        zipkin:
+          address: zipkin.istio-system:9411
+        sampling: 1.0
+
+      # Prometheus metrics
+      proxyMetadata:
+        ISTIO_META_DNS_CAPTURE: "true"
+        ISTIO_META_PROXY_CONFIG: |
+          discoveryAddress: istiod.istio-system.svc:15012
+
+      # Holdoff time
+      holdApplicationUntilProxyStarts: true
+
+    # Enable automatic mTLS
+    enableAutoMtls: true
+
+    # Trust domain
+    trustDomain: cluster.local
+
+    # Certificate configuration
+    certificates:
+    - secretName: dns.example1-service-account
+      dnsNames:
+      - example1.namespace.svc.cluster.local
+
+    # Outbound traffic policy
+    outboundTrafficPolicy:
+      mode: REGISTRY_ONLY
+
+    # Default service ports
+    defaultServiceExportTo:
+    - "*"
+
+    defaultVirtualServiceExportTo:
+    - "*"
+
+    defaultDestinationRuleExportTo:
+    - "*"
+
+    # Locality load balancing
+    localityLbSetting:
+      enabled: true
+      distribute:
+      - from: us-east-1a/*
+        to:
+          "us-east-1a/*": 80
+          "us-east-1b/*": 20
+      - from: us-east-1b/*
+        to:
+          "us-east-1b/*": 80
+          "us-east-1a/*": 20
+
+  # Component configuration
+  components:
+    # Pilot (Istiod)
+    pilot:
+      enabled: true
+      k8s:
+        replicaCount: 3
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+
+        # Pod disruption budget
+        podDisruptionBudget:
+          minAvailable: 2
+
+        # HPA
+        hpaSpec:
+          minReplicas: 3
+          maxReplicas: 10
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
+
+        # Strategy
+        strategy:
+          rollingUpdate:
+            maxSurge: 100%
+            maxUnavailable: 25%
+
+        # Affinity
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: istiod
+              topologyKey: kubernetes.io/hostname
+
+        # Environment variables
+        env:
+        - name: PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND
+          value: "true"
+        - name: PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND
+          value: "true"
+        - name: PILOT_TRACE_SAMPLING
+          value: "1.0"
+
+    # Ingress Gateway
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: true
+      k8s:
+        replicaCount: 3
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+
+        # Service configuration
+        service:
+          type: LoadBalancer
+          ports:
+          - name: status-port
+            port: 15021
+            protocol: TCP
+            targetPort: 15021
+          - name: http2
+            port: 80
+            protocol: TCP
+            targetPort: 8080
+          - name: https
+            port: 443
+            protocol: TCP
+            targetPort: 8443
+          - name: tcp
+            port: 31400
+            protocol: TCP
+            targetPort: 31400
+          - name: tls
+            port: 15443
+            protocol: TCP
+            targetPort: 15443
+
+        # HPA
+        hpaSpec:
+          minReplicas: 3
+          maxReplicas: 10
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
+
+        # Pod disruption budget
+        podDisruptionBudget:
+          minAvailable: 2
+
+        # Affinity
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: istio-ingressgateway
+              topologyKey: kubernetes.io/hostname
+
+    # Egress Gateway
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: true
+      k8s:
+        replicaCount: 2
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+
+        # HPA
+        hpaSpec:
+          minReplicas: 2
+          maxReplicas: 5
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
+
+  # Values configuration
+  values:
+    global:
+      # Logging level
+      logging:
+        level: "default:info"
+
+      # Proxy configuration
+      proxy:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+
+        # Concurrency
+        concurrency: 2
+
+        # Holdoff time
+        holdApplicationUntilProxyStarts: true
+
+        # Lifecycle hooks
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - sleep 15
+
+      # Proxy init configuration
+      proxy_init:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 100m
+            memory: 50Mi
+
+    # Telemetry
+    telemetry:
+      enabled: true
+      v2:
+        enabled: true
+        prometheus:
+          enabled: true
+
+    # Sidecar injector
+    sidecarInjectorWebhook:
+      enableNamespacesByDefault: false
+      rewriteAppHTTPProbe: true
+      neverInjectSelector:
+      - matchExpressions:
+        - key: job-name
+          operator: Exists
+
+    # Pilot configuration
+    pilot:
+      # CPU threshold for pushing config
+      cpu:
+        targetAverageUtilization: 80
+
+      # Memory threshold
+      memory:
+        targetAverageUtilization: 80
+
+      # Enable Kubernetes ingress
+      enableProtocolSniffingForOutbound: true
+      enableProtocolSniffingForInbound: true
+
+    # Gateway configuration
+    gateways:
+      istio-ingressgateway:
+        # Autoscaling
+        autoscaleEnabled: true
+        autoscaleMin: 3
+        autoscaleMax: 10
+
+        # CPU threshold
+        cpu:
+          targetAverageUtilization: 80
+
+        # Labels
+        labels:
+          app: istio-ingressgateway
+          istio: ingressgateway
+
+      istio-egressgateway:
+        # Autoscaling
+        autoscaleEnabled: true
+        autoscaleMin: 2
+        autoscaleMax: 5

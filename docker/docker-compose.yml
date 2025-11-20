@@ -1,0 +1,257 @@
+# Docker Compose for local development and testing
+# Full LLM Analytics Hub stack with all services
+
+version: '3.9'
+
+services:
+  # ====================
+  # Rust Microservices
+  # ====================
+
+  event-ingestion:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rust
+      args:
+        BUILD_TARGET: event-ingestion
+    image: llm-analytics/event-ingestion:latest
+    container_name: event-ingestion
+    environment:
+      - RUST_LOG=info
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=llm-events
+      - HTTP_PORT=8080
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      - kafka
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  metrics-aggregation:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rust
+      args:
+        BUILD_TARGET: metrics-aggregation
+    image: llm-analytics/metrics-aggregation:latest
+    container_name: metrics-aggregation
+    environment:
+      - RUST_LOG=info
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=llm-events
+      - KAFKA_GROUP_ID=metrics-aggregation
+      - DATABASE_URL=postgres://admin:password@timescaledb:5432/llm_analytics
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - kafka
+      - timescaledb
+      - redis
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  correlation-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rust
+      args:
+        BUILD_TARGET: correlation-engine
+    image: llm-analytics/correlation-engine:latest
+    container_name: correlation-engine
+    environment:
+      - RUST_LOG=info
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=llm-events
+      - KAFKA_GROUP_ID=correlation-engine
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  anomaly-detection:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rust
+      args:
+        BUILD_TARGET: anomaly-detection
+    image: llm-analytics/anomaly-detection:latest
+    container_name: anomaly-detection
+    environment:
+      - RUST_LOG=info
+      - KAFKA_BROKERS=kafka:9092
+      - INPUT_TOPIC=llm-metrics
+      - OUTPUT_TOPIC=llm-anomalies
+      - KAFKA_GROUP_ID=anomaly-detection
+    depends_on:
+      - kafka
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  forecasting:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rust
+      args:
+        BUILD_TARGET: forecasting
+    image: llm-analytics/forecasting:latest
+    container_name: forecasting
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgres://admin:password@timescaledb:5432/llm_analytics
+    depends_on:
+      - timescaledb
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  # ====================
+  # TypeScript API
+  # ====================
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    image: llm-analytics/api:latest
+    container_name: api
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgres://admin:password@timescaledb:5432/llm_analytics
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=kafka:9092
+    ports:
+      - "3000:3000"
+    depends_on:
+      - timescaledb
+      - redis
+      - kafka
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  # ====================
+  # React Frontend
+  # ====================
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    image: llm-analytics/frontend:latest
+    container_name: frontend
+    ports:
+      - "80:8080"
+    depends_on:
+      - api
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  # ====================
+  # Infrastructure
+  # ====================
+
+  timescaledb:
+    image: timescale/timescaledb:2.13.0-pg15
+    container_name: timescaledb
+    environment:
+      - POSTGRES_DB=llm_analytics
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  # ====================
+  # Monitoring
+  # ====================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9090"
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - llm-analytics
+    restart: unless-stopped
+
+networks:
+  llm-analytics:
+    driver: bridge
+
+volumes:
+  timescaledb-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:

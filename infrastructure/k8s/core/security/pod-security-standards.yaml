@@ -1,0 +1,302 @@
+---
+# Pod Security Standards Configuration
+# Enforces restricted pod security for application workloads
+
+# PodSecurityPolicy for restricted workloads (deprecated in K8s 1.25+)
+# Using Pod Security Admission instead
+
+# Note: Pod Security Standards are enforced via namespace labels
+# See namespaces.yaml for enforcement configuration
+
+---
+# Security Context Constraints for application pods
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pod-security-standards
+  namespace: security
+data:
+  restricted.yaml: |
+    # Restricted Pod Security Standard
+    # This is the most restrictive policy
+    apiVersion: pod-security.kubernetes.io/v1
+    kind: PodSecurityConfiguration
+    defaults:
+      enforce: "restricted"
+      enforce-version: "latest"
+      audit: "restricted"
+      audit-version: "latest"
+      warn: "restricted"
+      warn-version: "latest"
+    exemptions:
+      usernames: []
+      runtimeClasses: []
+      namespaces:
+      - kube-system
+      - istio-system
+      - ingress-nginx
+
+  baseline.yaml: |
+    # Baseline Pod Security Standard
+    # For infrastructure components
+    apiVersion: pod-security.kubernetes.io/v1
+    kind: PodSecurityConfiguration
+    defaults:
+      enforce: "baseline"
+      enforce-version: "latest"
+      audit: "restricted"
+      audit-version: "latest"
+      warn: "restricted"
+      warn-version: "latest"
+    exemptions:
+      usernames: []
+      runtimeClasses: []
+      namespaces: []
+---
+# SecurityContext template for restricted pods
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-context-templates
+  namespace: security
+data:
+  restricted-pod-template.yaml: |
+    # Restricted pod security context
+    securityContext:
+      # Run as non-root user
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 3000
+      fsGroup: 2000
+
+      # Seccomp profile
+      seccompProfile:
+        type: RuntimeDefault
+
+      # SELinux options (if using SELinux)
+      # seLinuxOptions:
+      #   level: "s0:c123,c456"
+
+    # Container security context
+    containerSecurityContext:
+      # Run as non-root
+      runAsNonRoot: true
+      runAsUser: 1000
+
+      # No privilege escalation
+      allowPrivilegeEscalation: false
+
+      # Read-only root filesystem
+      readOnlyRootFilesystem: true
+
+      # Drop all capabilities
+      capabilities:
+        drop:
+        - ALL
+
+      # Seccomp profile
+      seccompProfile:
+        type: RuntimeDefault
+
+  baseline-pod-template.yaml: |
+    # Baseline pod security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+    containerSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - NET_BIND_SERVICE
+---
+# AdmissionConfiguration for Pod Security
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: PodSecurity
+  configuration:
+    apiVersion: pod-security.admission.config.k8s.io/v1
+    kind: PodSecurityConfiguration
+    defaults:
+      enforce: "restricted"
+      enforce-version: "latest"
+      audit: "restricted"
+      audit-version: "latest"
+      warn: "restricted"
+      warn-version: "latest"
+    exemptions:
+      usernames:
+      - system:serviceaccount:kube-system:*
+      runtimeClasses: []
+      namespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - istio-system
+      - ingress-nginx
+---
+# ValidatingWebhookConfiguration for custom security policies
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: security-policy-validator
+webhooks:
+- name: validate.security.llm-analytics.io
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  failurePolicy: Fail
+  clientConfig:
+    service:
+      name: security-validator
+      namespace: security
+      path: "/validate"
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCg== # Replace with actual CA bundle
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+  namespaceSelector:
+    matchExpressions:
+    - key: security-validation
+      operator: In
+      values: ["enabled"]
+---
+# Security policy enforcement rules
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-enforcement-rules
+  namespace: security
+data:
+  rules.yaml: |
+    # Security enforcement rules
+    rules:
+      # Container image policies
+      - name: require-image-tag
+        description: "Container images must have explicit tags (not 'latest')"
+        enabled: true
+        severity: high
+        action: deny
+
+      - name: require-trusted-registry
+        description: "Container images must come from trusted registries"
+        enabled: true
+        severity: critical
+        action: deny
+        allowed_registries:
+        - gcr.io/llm-analytics
+        - docker.io/library
+        - registry.k8s.io
+
+      # Security context policies
+      - name: require-non-root
+        description: "Containers must run as non-root user"
+        enabled: true
+        severity: critical
+        action: deny
+
+      - name: require-read-only-root
+        description: "Containers should have read-only root filesystem"
+        enabled: true
+        severity: medium
+        action: warn
+
+      - name: require-drop-capabilities
+        description: "Containers must drop all capabilities"
+        enabled: true
+        severity: high
+        action: deny
+
+      # Resource policies
+      - name: require-resource-limits
+        description: "Containers must have CPU and memory limits"
+        enabled: true
+        severity: medium
+        action: warn
+
+      - name: require-resource-requests
+        description: "Containers must have CPU and memory requests"
+        enabled: true
+        severity: medium
+        action: warn
+
+      # Network policies
+      - name: require-network-policy
+        description: "Namespaces must have NetworkPolicies defined"
+        enabled: true
+        severity: high
+        action: warn
+
+      # Label policies
+      - name: require-labels
+        description: "Resources must have required labels"
+        enabled: true
+        severity: low
+        action: warn
+        required_labels:
+        - app
+        - version
+        - team
+
+      # Secrets policies
+      - name: no-secrets-in-env
+        description: "Secrets should not be exposed as environment variables"
+        enabled: true
+        severity: high
+        action: warn
+
+      # Host access policies
+      - name: no-host-network
+        description: "Pods should not use host network"
+        enabled: true
+        severity: critical
+        action: deny
+
+      - name: no-host-pid
+        description: "Pods should not use host PID namespace"
+        enabled: true
+        severity: critical
+        action: deny
+
+      - name: no-host-ipc
+        description: "Pods should not use host IPC namespace"
+        enabled: true
+        severity: critical
+        action: deny
+
+      - name: no-host-path
+        description: "Pods should not use hostPath volumes"
+        enabled: true
+        severity: high
+        action: deny
+        exemptions:
+        - namespace: monitoring
+          resource: promtail
+        - namespace: logging
+          resource: promtail
+
+      # Privilege policies
+      - name: no-privileged-containers
+        description: "Containers should not run in privileged mode"
+        enabled: true
+        severity: critical
+        action: deny
+
+      - name: no-privilege-escalation
+        description: "Containers should not allow privilege escalation"
+        enabled: true
+        severity: critical
+        action: deny

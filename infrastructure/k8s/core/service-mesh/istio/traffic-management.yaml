@@ -1,0 +1,391 @@
+---
+# Gateway for external traffic
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: llm-analytics-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  # HTTPS server
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: llm-analytics-cert
+    hosts:
+    - "*.llm-analytics.io"
+  # HTTP server (redirect to HTTPS)
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    tls:
+      httpsRedirect: true
+    hosts:
+    - "*.llm-analytics.io"
+---
+# VirtualService for API routing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: llm-analytics-api
+  namespace: llm-analytics
+spec:
+  hosts:
+  - "api.llm-analytics.io"
+  gateways:
+  - istio-system/llm-analytics-gateway
+  http:
+  # Canary deployment - 10% to v2, 90% to v1
+  - match:
+    - headers:
+        x-canary:
+          exact: "true"
+    route:
+    - destination:
+        host: llm-analytics-api.llm-analytics.svc.cluster.local
+        subset: v2
+        port:
+          number: 8080
+  - route:
+    - destination:
+        host: llm-analytics-api.llm-analytics.svc.cluster.local
+        subset: v1
+        port:
+          number: 8080
+      weight: 90
+    - destination:
+        host: llm-analytics-api.llm-analytics.svc.cluster.local
+        subset: v2
+        port:
+          number: 8080
+      weight: 10
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+---
+# DestinationRule for API with circuit breaking
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: llm-analytics-api
+  namespace: llm-analytics
+spec:
+  host: llm-analytics-api.llm-analytics.svc.cluster.local
+  trafficPolicy:
+    # Connection pool settings
+    connectionPool:
+      tcp:
+        maxConnections: 1000
+        connectTimeout: 30s
+        tcpKeepalive:
+          time: 7200s
+          interval: 75s
+      http:
+        http1MaxPendingRequests: 1024
+        http2MaxRequests: 1024
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+
+    # Load balancer settings
+    loadBalancer:
+      simple: LEAST_REQUEST
+      consistentHash:
+        httpHeaderName: x-user-id
+
+    # Outlier detection (circuit breaker)
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 40
+
+    # TLS settings
+    tls:
+      mode: ISTIO_MUTUAL
+
+  # Subsets for different versions
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+---
+# VirtualService for frontend
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: llm-analytics-frontend
+  namespace: llm-analytics
+spec:
+  hosts:
+  - "llm-analytics.io"
+  - "www.llm-analytics.io"
+  gateways:
+  - istio-system/llm-analytics-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: llm-analytics-api.llm-analytics.svc.cluster.local
+        port:
+          number: 8080
+  - route:
+    - destination:
+        host: llm-analytics-frontend.llm-analytics.svc.cluster.local
+        port:
+          number: 80
+---
+# DestinationRule for database with mTLS
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: timescaledb
+  namespace: llm-analytics
+spec:
+  host: timescaledb.llm-analytics.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-session-id
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# DestinationRule for Kafka
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: kafka
+  namespace: llm-analytics
+spec:
+  host: kafka-headless.llm-analytics.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 500
+        connectTimeout: 30s
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# DestinationRule for Redis
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: redis
+  namespace: llm-analytics
+spec:
+  host: redis-cluster.llm-analytics.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1000
+        connectTimeout: 10s
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-cache-key
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# ServiceEntry for external services
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-openai
+  namespace: llm-analytics
+spec:
+  hosts:
+  - api.openai.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# VirtualService for external service with timeout
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: external-openai
+  namespace: llm-analytics
+spec:
+  hosts:
+  - api.openai.com
+  http:
+  - timeout: 60s
+    retries:
+      attempts: 3
+      perTryTimeout: 20s
+    route:
+    - destination:
+        host: api.openai.com
+        port:
+          number: 443
+---
+# PeerAuthentication - enforce mTLS for namespace
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: llm-analytics
+spec:
+  mtls:
+    mode: STRICT
+---
+# PeerAuthentication - permissive mode for migration
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-permissive
+  namespace: istio-system
+spec:
+  mtls:
+    mode: PERMISSIVE
+---
+# AuthorizationPolicy - deny all by default
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: llm-analytics
+spec:
+  {}
+---
+# AuthorizationPolicy - allow from ingress gateway to API
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: llm-analytics-api
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        ports: ["8080"]
+---
+# AuthorizationPolicy - allow API to access database
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-api-to-db
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: timescaledb
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/llm-analytics/sa/llm-analytics-api
+    to:
+    - operation:
+        ports: ["5432"]
+---
+# RequestAuthentication - JWT validation
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: llm-analytics-api
+  jwtRules:
+  - issuer: "https://auth.llm-analytics.io"
+    jwksUri: "https://auth.llm-analytics.io/.well-known/jwks.json"
+    audiences:
+    - "llm-analytics-api"
+    forwardOriginalToken: true
+---
+# AuthorizationPolicy - require JWT
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: require-jwt
+  namespace: llm-analytics
+spec:
+  selector:
+    matchLabels:
+      app: llm-analytics-api
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    when:
+    - key: request.auth.claims[aud]
+      values: ["llm-analytics-api"]
+---
+# Telemetry for custom metrics
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: custom-metrics
+  namespace: llm-analytics
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+    dimensions:
+      request_protocol: request.protocol
+      response_code: response.code
+      source_workload: source.workload.name
+      destination_workload: destination.workload.name
+---
+# Sidecar configuration for optimization
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: default
+  namespace: llm-analytics
+spec:
+  egress:
+  - hosts:
+    - "./*"
+    - "istio-system/*"
+    - "monitoring/*"
+    - "logging/*"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY

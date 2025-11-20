@@ -1,0 +1,17 @@
+# Terraform Backend Configuration for Azure Storage
+# Copy this file to backend.hcl and update with your values
+# Usage: terraform init -backend-config="backend.hcl"
+
+resource_group_name  = "tfstate-rg"
+storage_account_name = "tfstate<random_suffix>"
+container_name       = "tfstate"
+key                  = "llm-analytics-hub.terraform.tfstate"
+
+# Optional: Use SAS token for authentication
+# sas_token = "?sv=2021-06-08&ss=b&srt=sco&sp=rwdlac&se=..."
+
+# Optional: Use service principal
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+# tenant_id       = "00000000-0000-0000-0000-000000000000"
+# client_id       = "00000000-0000-0000-0000-000000000000"
+# client_secret   = "your-client-secret"

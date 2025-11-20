@@ -1,0 +1,308 @@
+---
+# ServiceMonitor for LLM Analytics API
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llm-analytics-api
+  namespace: monitoring
+  labels:
+    app: llm-analytics-api
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: llm-analytics-api
+  namespaceSelector:
+    matchNames:
+    - llm-analytics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+---
+# ServiceMonitor for Kafka
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka
+  namespace: monitoring
+  labels:
+    app: kafka
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: kafka
+  namespaceSelector:
+    matchNames:
+    - llm-analytics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+---
+# ServiceMonitor for Redis
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis
+  namespace: monitoring
+  labels:
+    app: redis
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  namespaceSelector:
+    matchNames:
+    - llm-analytics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+---
+# ServiceMonitor for TimescaleDB
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: timescaledb
+  namespace: monitoring
+  labels:
+    app: timescaledb
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: timescaledb
+  namespaceSelector:
+    matchNames:
+    - llm-analytics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    scheme: http
+---
+# PodMonitor for application pods with Prometheus annotations
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: application-pods
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      monitoring: "true"
+  namespaceSelector:
+    matchNames:
+    - llm-analytics
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+---
+# PrometheusRule for custom alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: llm-analytics-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: llm-analytics.rules
+    interval: 30s
+    rules:
+    # High request rate
+    - alert: HighRequestRate
+      expr: |
+        rate(http_requests_total{job="llm-analytics-api"}[5m]) > 1000
+      for: 5m
+      labels:
+        severity: warning
+        team: application
+      annotations:
+        summary: "High request rate detected"
+        description: "Request rate is {{ $value }} requests/second"
+
+    # Database connection pool exhaustion
+    - alert: DatabaseConnectionPoolExhausted
+      expr: |
+        (
+          sum(db_connections_active{job="llm-analytics-api"})
+          /
+          sum(db_connections_max{job="llm-analytics-api"})
+        ) > 0.9
+      for: 5m
+      labels:
+        severity: critical
+        team: application
+      annotations:
+        summary: "Database connection pool almost exhausted"
+        description: "{{ $value | humanizePercentage }} of database connections are in use"
+
+    # Kafka consumer lag growing
+    - alert: KafkaConsumerLagGrowing
+      expr: |
+        (
+          kafka_consumergroup_lag
+          -
+          kafka_consumergroup_lag offset 5m
+        ) > 1000
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Kafka consumer lag is growing"
+        description: "Consumer group {{ $labels.consumergroup }} lag increased by {{ $value }} in the last 5 minutes"
+
+    # Redis replication lag
+    - alert: RedisReplicationLag
+      expr: |
+        redis_replication_lag_seconds > 10
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Redis replication lag detected"
+        description: "Redis replica {{ $labels.instance }} has {{ $value }}s replication lag"
+
+    # TimescaleDB high query time
+    - alert: TimescaleDBHighQueryTime
+      expr: |
+        histogram_quantile(0.95,
+          rate(pg_stat_statements_mean_exec_time_seconds_bucket[5m])
+        ) > 1
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "TimescaleDB queries are slow"
+        description: "p95 query execution time is {{ $value }}s"
+
+    # Disk space running low
+    - alert: DiskSpaceLow
+      expr: |
+        (
+          node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"}
+          /
+          node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}
+        ) < 0.1
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Disk space running low"
+        description: "Only {{ $value | humanizePercentage }} disk space available on {{ $labels.instance }}"
+
+    # Pod crash looping
+    - alert: PodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="llm-analytics"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        team: application
+      annotations:
+        summary: "Pod is crash looping"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is restarting {{ $value }} times per second"
+
+    # Memory usage high
+    - alert: PodMemoryUsageHigh
+      expr: |
+        (
+          container_memory_working_set_bytes{namespace="llm-analytics",container!=""}
+          /
+          container_spec_memory_limit_bytes{namespace="llm-analytics",container!=""}
+        ) > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: application
+      annotations:
+        summary: "Pod memory usage is high"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is using {{ $value | humanizePercentage }} of memory limit"
+
+    # CPU throttling
+    - alert: PodCPUThrottling
+      expr: |
+        rate(container_cpu_cfs_throttled_seconds_total{namespace="llm-analytics",container!=""}[5m]) > 0.5
+      for: 10m
+      labels:
+        severity: warning
+        team: application
+      annotations:
+        summary: "Pod is being CPU throttled"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is being throttled {{ $value | humanizePercentage }} of the time"
+
+    # Persistent volume usage high
+    - alert: PersistentVolumeUsageHigh
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes{namespace="llm-analytics"}
+          /
+          kubelet_volume_stats_capacity_bytes{namespace="llm-analytics"}
+        ) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Persistent volume usage is high"
+        description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+
+    # Ingress high 5xx rate
+    - alert: IngressHigh5xxRate
+      expr: |
+        (
+          sum(rate(nginx_ingress_controller_requests{status=~"5.."}[5m]))
+          /
+          sum(rate(nginx_ingress_controller_requests[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "High 5xx error rate in ingress"
+        description: "{{ $value | humanizePercentage }} of requests are returning 5xx errors"
+
+    # Certificate expiring soon
+    - alert: CertificateExpiringSoon
+      expr: |
+        (nginx_ingress_controller_ssl_expire_time_seconds - time()) < (7 * 24 * 3600)
+      for: 1h
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "SSL certificate expiring soon"
+        description: "Certificate for {{ $labels.host }} expires in {{ $value | humanizeDuration }}"

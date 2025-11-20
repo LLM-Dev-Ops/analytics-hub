@@ -1,0 +1,409 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-database-rules
+  namespace: llm-analytics-hub
+  labels:
+    app: prometheus
+    component: monitoring
+data:
+  database-alerts.yml: |
+    groups:
+      # ==========================================
+      # CRITICAL ALERTS - Immediate Action Required
+      # ==========================================
+      - name: database_critical_alerts
+        interval: 30s
+        rules:
+          # TimescaleDB Critical
+          - alert: TimescaleDBDown
+            expr: up{job="timescaledb"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB instance is down"
+              description: "TimescaleDB instance {{ $labels.instance }} has been down for more than 1 minute."
+              runbook: "https://docs.timescale.com/timescaledb/latest/troubleshooting/"
+
+          - alert: TimescaleDBReplicationLagCritical
+            expr: pg_replication_lag{job="timescaledb"} > 10
+            for: 2m
+            labels:
+              severity: critical
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB replication lag is critical"
+              description: "Replication lag is {{ $value }}s on {{ $labels.instance }}, exceeding 10s threshold."
+              runbook: "Check replication status and network connectivity between primary and replicas."
+
+          - alert: TimescaleDBDiskUsageCritical
+            expr: (kubelet_volume_stats_used_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"timescaledb.*"} / kubelet_volume_stats_capacity_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"timescaledb.*"}) > 0.85
+            for: 5m
+            labels:
+              severity: critical
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB disk usage critical"
+              description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.persistentvolumeclaim }}."
+              runbook: "Expand volume or run VACUUM FULL to reclaim space."
+
+          - alert: TimescaleDBMemoryUsageCritical
+            expr: (container_memory_working_set_bytes{namespace="llm-analytics-hub",pod=~"timescaledb.*"} / container_spec_memory_limit_bytes{namespace="llm-analytics-hub",pod=~"timescaledb.*"}) > 0.90
+            for: 5m
+            labels:
+              severity: critical
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB memory usage critical"
+              description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.pod }}."
+              runbook: "Check for memory leaks or increase memory limits."
+
+          - alert: TimescaleDBConnectionPoolExhausted
+            expr: pg_stat_database_numbackends{job="timescaledb"} >= pg_settings_max_connections{job="timescaledb"} * 0.95
+            for: 2m
+            labels:
+              severity: critical
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB connection pool nearly exhausted"
+              description: "{{ $labels.instance }} is using {{ $value }} of max connections."
+              runbook: "Increase max_connections or investigate connection leaks."
+
+          # Redis Critical
+          - alert: RedisDown
+            expr: up{job="redis"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              component: redis
+            annotations:
+              summary: "Redis instance is down"
+              description: "Redis instance {{ $labels.instance }} has been down for more than 1 minute."
+              runbook: "Check Redis logs and cluster status."
+
+          - alert: RedisMemoryUsageCritical
+            expr: redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"} > 0.90
+            for: 5m
+            labels:
+              severity: critical
+              component: redis
+            annotations:
+              summary: "Redis memory usage critical"
+              description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}."
+              runbook: "Increase maxmemory or review eviction policy."
+
+          - alert: RedisReplicationLagCritical
+            expr: redis_replication_lag{job="redis"} > 10
+            for: 2m
+            labels:
+              severity: critical
+              component: redis
+            annotations:
+              summary: "Redis replication lag critical"
+              description: "Replication lag is {{ $value }}s on {{ $labels.instance }}."
+              runbook: "Check network and replication status."
+
+          # Kafka Critical
+          - alert: KafkaDown
+            expr: up{job="kafka"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              component: kafka
+            annotations:
+              summary: "Kafka broker is down"
+              description: "Kafka broker {{ $labels.instance }} has been down for more than 1 minute."
+              runbook: "Check Kafka logs and ZooKeeper connectivity."
+
+          - alert: KafkaUnderReplicatedPartitions
+            expr: kafka_server_replicamanager_underreplicatedpartitions{job="kafka"} > 0
+            for: 5m
+            labels:
+              severity: critical
+              component: kafka
+            annotations:
+              summary: "Kafka has under-replicated partitions"
+              description: "Broker {{ $labels.broker }} has {{ $value }} under-replicated partitions."
+              runbook: "Check broker health and network connectivity."
+
+          - alert: KafkaDiskUsageCritical
+            expr: (kubelet_volume_stats_used_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"kafka.*"} / kubelet_volume_stats_capacity_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"kafka.*"}) > 0.85
+            for: 5m
+            labels:
+              severity: critical
+              component: kafka
+            annotations:
+              summary: "Kafka disk usage critical"
+              description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.persistentvolumeclaim }}."
+              runbook: "Increase retention policies or expand volume."
+
+      # ==========================================
+      # WARNING ALERTS - Action Needed Soon
+      # ==========================================
+      - name: database_warning_alerts
+        interval: 1m
+        rules:
+          # TimescaleDB Warnings
+          - alert: TimescaleDBSlowQueries
+            expr: histogram_quantile(0.95, sum(rate(pg_stat_statements_mean_exec_time_bucket[5m])) by (le)) > 1
+            for: 10m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB has slow queries"
+              description: "95th percentile query time is {{ $value }}s."
+              runbook: "Review slow query log and optimize queries."
+
+          - alert: TimescaleDBCacheHitRatioLow
+            expr: pg_stat_database_blks_hit{job="timescaledb"} / (pg_stat_database_blks_hit{job="timescaledb"} + pg_stat_database_blks_read{job="timescaledb"}) < 0.90
+            for: 10m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB cache hit ratio is low"
+              description: "Cache hit ratio is {{ $value | humanizePercentage }} on {{ $labels.datname }}."
+              runbook: "Consider increasing shared_buffers."
+
+          - alert: TimescaleDBReplicationLagWarning
+            expr: pg_replication_lag{job="timescaledb"} > 5
+            for: 5m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB replication lag elevated"
+              description: "Replication lag is {{ $value }}s on {{ $labels.instance }}."
+              runbook: "Monitor replication and check for network issues."
+
+          - alert: TimescaleDBHighCPU
+            expr: rate(container_cpu_usage_seconds_total{namespace="llm-analytics-hub",pod=~"timescaledb.*"}[5m]) > 0.80
+            for: 10m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB CPU usage high"
+              description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.pod }}."
+              runbook: "Review query performance and consider scaling."
+
+          - alert: TimescaleDBDiskUsageWarning
+            expr: (kubelet_volume_stats_used_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"timescaledb.*"} / kubelet_volume_stats_capacity_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"timescaledb.*"}) > 0.75
+            for: 10m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB disk usage high"
+              description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.persistentvolumeclaim }}."
+              runbook: "Plan for volume expansion."
+
+          - alert: TimescaleDBDeadlocks
+            expr: rate(pg_stat_database_deadlocks{job="timescaledb"}[5m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+              component: timescaledb
+            annotations:
+              summary: "TimescaleDB experiencing deadlocks"
+              description: "Database {{ $labels.datname }} has {{ $value }} deadlocks/sec."
+              runbook: "Review application logic and transaction isolation levels."
+
+          # Redis Warnings
+          - alert: RedisMemoryUsageWarning
+            expr: redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"} > 0.80
+            for: 10m
+            labels:
+              severity: warning
+              component: redis
+            annotations:
+              summary: "Redis memory usage high"
+              description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}."
+              runbook: "Monitor memory usage and plan for scaling."
+
+          - alert: RedisHighEvictionRate
+            expr: rate(redis_evicted_keys_total{job="redis"}[5m]) > 100
+            for: 10m
+            labels:
+              severity: warning
+              component: redis
+            annotations:
+              summary: "Redis eviction rate is high"
+              description: "Evicting {{ $value }} keys/sec on {{ $labels.instance }}."
+              runbook: "Increase maxmemory or review data retention."
+
+          - alert: RedisCacheHitRatioLow
+            expr: rate(redis_keyspace_hits_total{job="redis"}[5m]) / (rate(redis_keyspace_hits_total{job="redis"}[5m]) + rate(redis_keyspace_misses_total{job="redis"}[5m])) < 0.80
+            for: 10m
+            labels:
+              severity: warning
+              component: redis
+            annotations:
+              summary: "Redis cache hit ratio is low"
+              description: "Cache hit ratio is {{ $value | humanizePercentage }} on {{ $labels.instance }}."
+              runbook: "Review caching strategy and TTL policies."
+
+          - alert: RedisReplicationLagWarning
+            expr: redis_replication_lag{job="redis"} > 5
+            for: 5m
+            labels:
+              severity: warning
+              component: redis
+            annotations:
+              summary: "Redis replication lag elevated"
+              description: "Replication lag is {{ $value }}s on {{ $labels.instance }}."
+              runbook: "Monitor replication health."
+
+          - alert: RedisConnectionsHigh
+            expr: redis_connected_clients{job="redis"} > 1000
+            for: 10m
+            labels:
+              severity: warning
+              component: redis
+            annotations:
+              summary: "Redis has many connections"
+              description: "{{ $labels.instance }} has {{ $value }} connected clients."
+              runbook: "Review connection pooling configuration."
+
+          # Kafka Warnings
+          - alert: KafkaConsumerLagHigh
+            expr: kafka_consumergroup_lag{job="kafka"} > 1000
+            for: 10m
+            labels:
+              severity: warning
+              component: kafka
+            annotations:
+              summary: "Kafka consumer lag is high"
+              description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }}."
+              runbook: "Scale consumers or optimize processing."
+
+          - alert: KafkaHighCPU
+            expr: rate(process_cpu_seconds_total{job="kafka"}[5m]) > 0.80
+            for: 10m
+            labels:
+              severity: warning
+              component: kafka
+            annotations:
+              summary: "Kafka broker CPU usage high"
+              description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.broker }}."
+              runbook: "Review broker configuration and consider scaling."
+
+          - alert: KafkaHighMemory
+            expr: jvm_memory_bytes_used{job="kafka"} / jvm_memory_bytes_max{job="kafka"} > 0.80
+            for: 10m
+            labels:
+              severity: warning
+              component: kafka
+            annotations:
+              summary: "Kafka broker memory usage high"
+              description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.broker }}."
+              runbook: "Review heap settings and consider scaling."
+
+          - alert: KafkaDiskUsageWarning
+            expr: (kubelet_volume_stats_used_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"kafka.*"} / kubelet_volume_stats_capacity_bytes{namespace="llm-analytics-hub",persistentvolumeclaim=~"kafka.*"}) > 0.75
+            for: 10m
+            labels:
+              severity: warning
+              component: kafka
+            annotations:
+              summary: "Kafka disk usage high"
+              description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.persistentvolumeclaim }}."
+              runbook: "Review retention policies or plan for expansion."
+
+          # Zookeeper Warnings
+          - alert: ZookeeperDown
+            expr: up{job="zookeeper"} == 0
+            for: 1m
+            labels:
+              severity: warning
+              component: zookeeper
+            annotations:
+              summary: "Zookeeper instance is down"
+              description: "Zookeeper instance {{ $labels.instance }} is down."
+              runbook: "Check Zookeeper logs and quorum status."
+
+      # ==========================================
+      # INFO ALERTS - Informational
+      # ==========================================
+      - name: database_info_alerts
+        interval: 5m
+        rules:
+          # Backup Success
+          - alert: DatabaseBackupSuccess
+            expr: database_backup_success{job="backup-orchestrator"} == 1
+            for: 1m
+            labels:
+              severity: info
+              component: backup
+            annotations:
+              summary: "Database backup completed successfully"
+              description: "Backup for {{ $labels.database }} completed at {{ $labels.timestamp }}."
+
+          - alert: DatabaseBackupFailure
+            expr: database_backup_success{job="backup-orchestrator"} == 0
+            for: 1m
+            labels:
+              severity: warning
+              component: backup
+            annotations:
+              summary: "Database backup failed"
+              description: "Backup for {{ $labels.database }} failed. Check backup logs."
+              runbook: "Review backup logs and verify S3 connectivity."
+
+          # Failover Events
+          - alert: DatabaseFailoverEvent
+            expr: increase(database_failover_total[5m]) > 0
+            labels:
+              severity: info
+              component: ha
+            annotations:
+              summary: "Database failover occurred"
+              description: "Failover detected for {{ $labels.database }}."
+              runbook: "Verify new primary is healthy and replication is working."
+
+          # Configuration Changes
+          - alert: DatabaseConfigurationChanged
+            expr: increase(database_config_reload_total[5m]) > 0
+            labels:
+              severity: info
+              component: config
+            annotations:
+              summary: "Database configuration changed"
+              description: "Configuration reload detected for {{ $labels.database }}."
+
+          # Long Running Transactions
+          - alert: TimescaleDBLongRunningTransaction
+            expr: pg_stat_activity_max_tx_duration{job="timescaledb"} > 3600
+            for: 5m
+            labels:
+              severity: info
+              component: timescaledb
+            annotations:
+              summary: "Long running transaction detected"
+              description: "Transaction running for {{ $value }}s on {{ $labels.datname }}."
+              runbook: "Review active transactions and consider terminating."
+
+          # Vacuum Operations
+          - alert: TimescaleDBVacuumRunning
+            expr: pg_stat_progress_vacuum{job="timescaledb"} > 0
+            labels:
+              severity: info
+              component: timescaledb
+            annotations:
+              summary: "VACUUM operation in progress"
+              description: "VACUUM running on {{ $labels.datname }}."
+
+          # Compression Status
+          - alert: TimescaleDBCompressionRatioLow
+            expr: timescaledb_hypertable_compression_ratio{job="timescaledb"} < 0.30
+            for: 1h
+            labels:
+              severity: info
+              component: timescaledb
+            annotations:
+              summary: "Low compression ratio detected"
+              description: "Compression ratio is {{ $value | humanizePercentage }} for {{ $labels.hypertable }}."
+              runbook: "Review compression settings and chunk size."

@@ -1,0 +1,305 @@
+---
+# Kafka metadata backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kafka-metadata-backup
+  namespace: kafka
+  labels:
+    app: kafka-backup
+    component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: kafka-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup-metadata
+            image: confluentinc/cp-kafka:7.5.3
+            command:
+            - /bin/bash
+            - /scripts/backup-metadata.sh
+            env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: BACKUP_DATE
+              value: "$(date +%Y%m%d-%H%M%S)"
+            - name: S3_BUCKET
+              value: "s3://kafka-backups"
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: backup
+              mountPath: /backup
+          volumes:
+          - name: scripts
+            configMap:
+              name: kafka-backup-scripts
+              defaultMode: 0755
+          - name: backup
+            emptyDir: {}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-backup-scripts
+  namespace: kafka
+  labels:
+    app: kafka-backup
+    component: backup
+data:
+  backup-metadata.sh: |
+    #!/bin/bash
+    set -e
+
+    BACKUP_DIR="/backup/kafka-metadata-${BACKUP_DATE}"
+    mkdir -p "$BACKUP_DIR"
+
+    echo "Starting Kafka metadata backup to $BACKUP_DIR..."
+
+    # Backup topic configurations
+    echo "Backing up topic metadata..."
+    kafka-topics.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+      --describe \
+      --command-config /config/admin.properties > "$BACKUP_DIR/topics.txt"
+
+    # Backup topic list
+    kafka-topics.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+      --list \
+      --command-config /config/admin.properties > "$BACKUP_DIR/topic-list.txt"
+
+    # Backup consumer groups
+    echo "Backing up consumer group metadata..."
+    kafka-consumer-groups.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+      --list \
+      --command-config /config/admin.properties > "$BACKUP_DIR/consumer-groups.txt"
+
+    # Backup each consumer group details
+    while read -r group; do
+      echo "Backing up consumer group: $group"
+      kafka-consumer-groups.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+        --group "$group" \
+        --describe \
+        --command-config /config/admin.properties > "$BACKUP_DIR/consumer-group-${group}.txt"
+    done < "$BACKUP_DIR/consumer-groups.txt"
+
+    # Backup broker configurations
+    echo "Backing up broker configurations..."
+    kafka-configs.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+      --entity-type brokers \
+      --entity-default \
+      --describe \
+      --command-config /config/admin.properties > "$BACKUP_DIR/broker-configs.txt"
+
+    # Backup ACLs
+    echo "Backing up ACLs..."
+    kafka-acls.sh --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+      --list \
+      --command-config /config/admin.properties > "$BACKUP_DIR/acls.txt" || true
+
+    # Create archive
+    echo "Creating backup archive..."
+    cd /backup
+    tar -czf "kafka-metadata-${BACKUP_DATE}.tar.gz" "kafka-metadata-${BACKUP_DATE}"
+
+    # Upload to S3 (requires AWS credentials)
+    if command -v aws &> /dev/null; then
+      echo "Uploading backup to S3..."
+      aws s3 cp "kafka-metadata-${BACKUP_DATE}.tar.gz" "${S3_BUCKET}/metadata/" || echo "S3 upload failed, backup saved locally"
+    else
+      echo "AWS CLI not available, skipping S3 upload"
+    fi
+
+    echo "Backup completed successfully"
+
+  restore-metadata.sh: |
+    #!/bin/bash
+    set -e
+
+    if [ -z "$1" ]; then
+      echo "Usage: $0 <backup-file>"
+      exit 1
+    fi
+
+    BACKUP_FILE="$1"
+    RESTORE_DIR="/tmp/kafka-restore-$(date +%s)"
+
+    echo "Restoring Kafka metadata from $BACKUP_FILE..."
+
+    # Extract backup
+    mkdir -p "$RESTORE_DIR"
+    tar -xzf "$BACKUP_FILE" -C "$RESTORE_DIR"
+
+    # Find the backup directory
+    BACKUP_DIR=$(find "$RESTORE_DIR" -type d -name "kafka-metadata-*" | head -1)
+
+    if [ ! -d "$BACKUP_DIR" ]; then
+      echo "Error: Backup directory not found"
+      exit 1
+    fi
+
+    # Restore topics
+    echo "Restoring topics..."
+    # Parse topic configurations and recreate
+    # This is a simplified example - production should parse the actual output
+    while read -r line; do
+      if [[ $line =~ ^Topic: ]]; then
+        TOPIC=$(echo "$line" | awk '{print $2}')
+        PARTITIONS=$(echo "$line" | grep -oP 'PartitionCount: \K\d+')
+        REPLICATION=$(echo "$line" | grep -oP 'ReplicationFactor: \K\d+')
+
+        echo "Creating topic: $TOPIC (partitions: $PARTITIONS, replication: $REPLICATION)"
+        kafka-topics.sh --create \
+          --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} \
+          --topic "$TOPIC" \
+          --partitions "$PARTITIONS" \
+          --replication-factor "$REPLICATION" \
+          --if-not-exists \
+          --command-config /config/admin.properties || true
+      fi
+    done < "$BACKUP_DIR/topics.txt"
+
+    # Restore ACLs
+    echo "Restoring ACLs..."
+    if [ -f "$BACKUP_DIR/acls.txt" ]; then
+      # Parse and restore ACLs
+      echo "ACL restoration requires manual review"
+    fi
+
+    echo "Restore completed. Please verify configurations."
+
+  backup-topics-to-s3.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Starting Kafka topic data backup to S3..."
+
+    # This uses kafka-connect-s3 or similar connector
+    # Configuration for S3 sink connector
+    cat > /tmp/s3-sink.json <<EOF
+    {
+      "name": "s3-backup-sink",
+      "config": {
+        "connector.class": "io.confluent.connect.s3.S3SinkConnector",
+        "tasks.max": "10",
+        "topics.regex": "llm-.*",
+        "s3.bucket.name": "${S3_BUCKET}",
+        "s3.region": "${AWS_DEFAULT_REGION}",
+        "flush.size": "1000",
+        "rotate.interval.ms": "3600000",
+        "storage.class": "io.confluent.connect.s3.storage.S3Storage",
+        "format.class": "io.confluent.connect.s3.format.parquet.ParquetFormat",
+        "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
+        "path.format": "YYYY/MM/dd",
+        "partition.duration.ms": "3600000",
+        "timestamp.extractor": "Record",
+        "schema.compatibility": "NONE"
+      }
+    }
+    EOF
+
+    # Submit connector (requires Kafka Connect running)
+    curl -X POST -H "Content-Type: application/json" \
+      --data @/tmp/s3-sink.json \
+      http://kafka-connect:8083/connectors || echo "Kafka Connect not available"
+
+    echo "S3 backup connector configured"
+
+  list-backups.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "Listing Kafka backups..."
+
+    if command -v aws &> /dev/null; then
+      echo "=== S3 Metadata Backups ==="
+      aws s3 ls "${S3_BUCKET}/metadata/" --recursive
+
+      echo ""
+      echo "=== S3 Topic Data Backups ==="
+      aws s3 ls "${S3_BUCKET}/topics/" --recursive
+    else
+      echo "AWS CLI not available"
+      echo "Local backups:"
+      ls -lh /backup/
+    fi
+
+  verify-backup.sh: |
+    #!/bin/bash
+    set -e
+
+    if [ -z "$1" ]; then
+      echo "Usage: $0 <backup-file>"
+      exit 1
+    fi
+
+    BACKUP_FILE="$1"
+
+    echo "Verifying backup: $BACKUP_FILE"
+
+    # Check if file exists
+    if [ ! -f "$BACKUP_FILE" ]; then
+      echo "Error: Backup file not found"
+      exit 1
+    fi
+
+    # Check archive integrity
+    echo "Checking archive integrity..."
+    tar -tzf "$BACKUP_FILE" > /dev/null
+
+    # Extract and verify contents
+    TEMP_DIR=$(mktemp -d)
+    tar -xzf "$BACKUP_FILE" -C "$TEMP_DIR"
+
+    # Verify expected files exist
+    BACKUP_DIR=$(find "$TEMP_DIR" -type d -name "kafka-metadata-*" | head -1)
+
+    if [ ! -f "$BACKUP_DIR/topics.txt" ]; then
+      echo "Error: topics.txt not found in backup"
+      exit 1
+    fi
+
+    if [ ! -f "$BACKUP_DIR/consumer-groups.txt" ]; then
+      echo "Error: consumer-groups.txt not found in backup"
+      exit 1
+    fi
+
+    # Count topics
+    TOPIC_COUNT=$(grep -c "^Topic:" "$BACKUP_DIR/topics.txt" || true)
+    echo "Backup contains $TOPIC_COUNT topics"
+
+    # Count consumer groups
+    GROUP_COUNT=$(wc -l < "$BACKUP_DIR/consumer-groups.txt")
+    echo "Backup contains $GROUP_COUNT consumer groups"
+
+    # Cleanup
+    rm -rf "$TEMP_DIR"
+
+    echo "Backup verification completed successfully"
+
+---
+# PersistentVolumeClaim for local backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-backup-storage
+  namespace: kafka
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 100Gi

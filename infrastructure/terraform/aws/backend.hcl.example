@@ -1,0 +1,17 @@
+# S3 Backend Configuration for Terraform State
+# Usage: terraform init -backend-config=backend.hcl
+
+bucket         = "your-terraform-state-bucket"
+key            = "llm-analytics-hub/eks/terraform.tfstate"
+region         = "us-east-1"
+encrypt        = true
+dynamodb_table = "terraform-state-lock"
+
+# Optional: Enable versioning on the S3 bucket
+# versioning    = true
+
+# Optional: Use KMS encryption
+# kms_key_id    = "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
+
+# Optional: Configure workspace key prefix
+# workspace_key_prefix = "workspaces"
