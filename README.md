@@ -280,6 +280,10 @@ open http://localhost:3001      # Grafana (admin/admin)
 # Rust dependencies
 cargo build --release
 
+# Build CLI tools
+cargo build --release --bin llm-ops
+cargo build --release --bin db-migrate
+
 # TypeScript API dependencies
 cd api
 npm install
@@ -288,6 +292,25 @@ npm install
 cd ../frontend
 npm install
 ```
+
+#### 1.5 Using Rust CLI Tools
+
+The platform now includes production-grade Rust CLI tools (replacing shell scripts):
+
+```bash
+# Operations CLI
+llm-ops deploy --provider aws --environment production
+llm-ops validate --target all
+llm-ops health --service all
+llm-ops build --service all --push
+
+# Database migrations
+db-migrate --database-url $DATABASE_URL migrate
+db-migrate status
+db-migrate init
+```
+
+See **[Rust Conversion Guide](docs/RUST_CONVERSION.md)** for complete details.
 
 #### 2. Start Infrastructure Services
 
@@ -832,6 +855,8 @@ For questions, issues, or feature requests:
 - **Anomaly Detection**: 269 lines (Z-score, baselines, severity classification)
 - **Correlation Engine**: 420 lines (8 correlation types, cross-module analysis)
 - **Aggregation Engine**: 380 lines (multi-window, percentile calculations)
+- **Operations CLI**: 750 lines (deployment, validation, health checks) - **NEW** ✨
+- **Database Migration**: 450 lines (version-controlled migrations) - **NEW** ✨
 
 ### Commercial Viability
 - ✅ Enterprise-grade code quality
