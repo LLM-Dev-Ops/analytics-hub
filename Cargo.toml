@@ -35,7 +35,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chron
 redis = { version = "0.24", features = ["tokio-comp", "cluster-async", "connection-manager"] }
 
 # Kafka - Event streaming
-rdkafka = { version = "0.35", features = ["cmake-build", "ssl", "gssapi", "libz", "zstd"] }
+rdkafka = { version = "0.35", features = ["cmake-build", "ssl", "libz", "zstd"] }
 
 # Time-series and metrics
 influxdb = { version = "0.7", optional = true }
