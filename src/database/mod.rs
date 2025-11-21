@@ -92,6 +92,32 @@ impl Database {
         Ok(Self { pool })
     }
 
+    /// Create a new database client from a connection URL
+    #[instrument(skip(url))]
+    pub async fn from_url(url: &str) -> Result<Self> {
+        info!("Initializing database connection pool from URL");
+
+        let pool = PgPoolOptions::new()
+            .max_connections(50)
+            .min_connections(5)
+            .acquire_timeout(Duration::from_secs(30))
+            .idle_timeout(Duration::from_secs(600))
+            .max_lifetime(Duration::from_secs(1800))
+            .connect(url)
+            .await
+            .context("Failed to create database connection pool")?;
+
+        // Test the connection
+        sqlx::query("SELECT 1")
+            .execute(&pool)
+            .await
+            .context("Failed to test database connection")?;
+
+        info!("Database connection pool initialized successfully");
+
+        Ok(Self { pool })
+    }
+
     /// Get a reference to the connection pool
     pub fn pool(&self) -> &PgPool {
         &self.pool

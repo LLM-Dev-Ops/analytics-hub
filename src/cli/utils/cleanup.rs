@@ -46,7 +46,7 @@ pub struct CleanupArgs {
 impl CleanupArgs {
     /// Execute cleanup command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Infrastructure Cleanup ===".bold().cyan());
             println!();
         }
@@ -63,7 +63,7 @@ impl CleanupArgs {
         }
 
         if ctx.dry_run {
-            if ctx.json {
+            if ctx.json_output {
                 let output = serde_json::json!({
                     "dry_run": true,
                     "environment": self.environment,
@@ -90,54 +90,54 @@ impl CleanupArgs {
         }
 
         // Confirmation
-        if !self.force && !ctx.json {
+        if !self.force && !ctx.json_output {
             self.confirm_cleanup()?;
         }
 
         // Create backup if not skipped
-        if !self.skip_backup && !ctx.json {
+        if !self.skip_backup && !ctx.json_output {
             println!("{}", "=== Creating Backup ===".bold());
             self.create_backup().await?;
             println!();
         }
 
         // Drain Kubernetes resources
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Draining Kubernetes Resources ===".bold());
         }
         self.drain_kubernetes_resources().await?;
-        if !ctx.json {
+        if !ctx.json_output {
             println!();
         }
 
         // Delete Kubernetes resources
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Deleting Kubernetes Resources ===".bold());
         }
         self.delete_kubernetes_resources().await?;
-        if !ctx.json {
+        if !ctx.json_output {
             println!();
         }
 
         // Delete cloud resources (unless k8s-only)
         if !self.k8s_only {
-            if !ctx.json {
+            if !ctx.json_output {
                 println!("{}", "=== Deleting Cloud Resources ===".bold());
             }
             self.destroy_cloud_infrastructure().await?;
-            if !ctx.json {
+            if !ctx.json_output {
                 println!();
             }
         }
 
         // Cleanup local state
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Cleaning Local State ===".bold());
         }
         self.cleanup_local_state().await?;
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             let output = serde_json::json!({
                 "success": true,
                 "environment": self.environment,

@@ -298,6 +298,14 @@ impl EventIngester {
     pub fn current_throughput(&self) -> f64 {
         self.metrics.calculate_throughput()
     }
+
+    /// Shutdown the ingester gracefully
+    pub async fn shutdown(&mut self) -> Result<()> {
+        info!("Event ingester shutting down");
+        // In a real implementation, we would stop the consumer task here
+        // For now, just log the shutdown
+        Ok(())
+    }
 }
 
 /// Ingestion metrics tracking

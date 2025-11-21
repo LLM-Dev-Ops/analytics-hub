@@ -46,10 +46,10 @@ impl CacheManager {
 
     /// Cache a metric value
     pub async fn cache_metric(&mut self, key: &str, value: f64, ttl: Option<Duration>) -> Result<()> {
-        let conn = self.get_connection().await?;
         let ttl_secs = ttl.unwrap_or(self.default_ttl).as_secs();
+        let conn = self.get_connection().await?;
 
-        conn.set_ex(key, value, ttl_secs).await?;
+        conn.set_ex::<_, _, ()>(key, value, ttl_secs).await?;
         debug!("Cached metric: {} = {}", key, value);
 
         Ok(())
@@ -71,9 +71,10 @@ impl CacheManager {
     ) -> Result<()> {
         let key = format!("metrics:{}:{}", metric_name, window);
         let json = serde_json::to_string(data)?;
+        let ttl_secs = self.default_ttl.as_secs();
         let conn = self.get_connection().await?;
 
-        conn.set_ex(key, json, self.default_ttl.as_secs())
+        conn.set_ex::<_, _, ()>(key, json, ttl_secs)
             .await?;
 
         Ok(())
@@ -103,12 +104,12 @@ impl CacheManager {
         // Increment event counters
         let counter_key = format!("counter:{}:{}", module, event_type);
         let conn = self.get_connection().await?;
-        conn.incr(&counter_key, 1).await?;
+        conn.incr::<_, _, ()>(&counter_key, 1).await?;
 
         // Update last event timestamp
         let ts_key = format!("last_event:{}:{}", module, event_type);
         let timestamp = event.common.timestamp.timestamp();
-        conn.set(&ts_key, timestamp).await?;
+        conn.set::<_, _, ()>(&ts_key, timestamp).await?;
 
         Ok(())
     }
@@ -131,7 +132,7 @@ impl CacheManager {
     /// Set a value with TTL
     pub async fn set_with_ttl(&mut self, key: &str, value: &str, ttl: Duration) -> Result<()> {
         let conn = self.get_connection().await?;
-        conn.set_ex(key, value, ttl.as_secs()).await?;
+        conn.set_ex::<_, _, ()>(key, value, ttl.as_secs()).await?;
         Ok(())
     }
 
@@ -145,7 +146,7 @@ impl CacheManager {
     /// Delete a cached value
     pub async fn delete(&mut self, key: &str) -> Result<()> {
         let conn = self.get_connection().await?;
-        conn.del(key).await?;
+        conn.del::<_, ()>(key).await?;
         Ok(())
     }
 
@@ -184,7 +185,7 @@ impl CacheManager {
     /// Flush all cache data (use with caution)
     pub async fn flush_all(&mut self) -> Result<()> {
         let conn = self.get_connection().await?;
-        redis::cmd("FLUSHDB").query_async(conn).await?;
+        redis::cmd("FLUSHDB").query_async::<_, ()>(conn).await?;
         info!("Cache flushed");
         Ok(())
     }

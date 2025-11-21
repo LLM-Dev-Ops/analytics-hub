@@ -47,7 +47,7 @@ pub struct ConnectArgs {
 impl ConnectArgs {
     /// Execute connect command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if ctx.json {
+        if ctx.json_output {
             anyhow::bail!("Interactive connection not supported in JSON mode");
         }
 
@@ -85,7 +85,7 @@ impl ConnectArgs {
     async fn find_pod(&self, k8s_client: &K8sClient) -> Result<String> {
         info!("Auto-detecting pod for {:?}...", self.database);
 
-        let pods = k8s_client.list_pods_in_namespace().await?;
+        let pods = k8s_client.list_pods_in_namespace(&self.namespace).await?;
 
         let pod_prefix = match self.database {
             DatabaseType::Timescaledb => "timescaledb",

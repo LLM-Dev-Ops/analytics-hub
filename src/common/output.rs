@@ -65,6 +65,16 @@ impl CommandOutput {
         }
     }
 
+    /// Create a failed output with data
+    pub fn failure_with_data(message: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            success: false,
+            message: message.into(),
+            data: Some(data),
+            errors: Vec::new(),
+        }
+    }
+
     /// Output as JSON to stdout
     pub fn output_json(&self) {
         if let Ok(json) = serde_json::to_string_pretty(self) {

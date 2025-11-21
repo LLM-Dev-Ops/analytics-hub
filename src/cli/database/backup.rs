@@ -52,7 +52,7 @@ pub struct BackupArgs {
 impl BackupArgs {
     /// Execute backup command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Database Backup ===".bold().cyan());
             println!();
         }
@@ -81,7 +81,7 @@ impl BackupArgs {
         };
 
         if ctx.dry_run {
-            if ctx.json {
+            if ctx.json_output {
                 let output = serde_json::json!({
                     "dry_run": true,
                     "database": self.database,
@@ -106,7 +106,7 @@ impl BackupArgs {
         let manager = TimescaleBackupManager::new(&self.namespace, config).await?;
 
         // Show progress
-        let spinner = if !ctx.json {
+        let spinner = if !ctx.json_output {
             let pb = ProgressBar::new_spinner();
             pb.set_style(
                 ProgressStyle::default_spinner()
@@ -134,7 +134,7 @@ impl BackupArgs {
         }
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             println!("{}", serde_json::to_string_pretty(&metadata)?);
         } else {
             println!("{} Backup created successfully", "✓".green().bold());
@@ -206,7 +206,7 @@ pub struct ListBackupsArgs {
 impl ListBackupsArgs {
     /// Execute list backups command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== List Backups ===".bold().cyan());
             println!();
         }
@@ -238,7 +238,7 @@ impl ListBackupsArgs {
         }
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             let output = serde_json::json!({
                 "database": self.database,
                 "total_backups": backups.len(),

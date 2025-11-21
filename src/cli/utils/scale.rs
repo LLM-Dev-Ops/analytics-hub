@@ -40,7 +40,7 @@ pub struct ScaleArgs {
 impl ScaleArgs {
     /// Execute scale command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Scale Deployments ===".bold().cyan());
             println!();
         }
@@ -51,7 +51,7 @@ impl ScaleArgs {
         }
 
         if ctx.dry_run {
-            if ctx.json {
+            if ctx.json_output {
                 let output = serde_json::json!({
                     "dry_run": true,
                     "deployment": self.deployment,
@@ -79,7 +79,7 @@ impl ScaleArgs {
         let k8s_client = K8sClient::new(&self.namespace).await?;
 
         // Show progress
-        let spinner = if !ctx.json {
+        let spinner = if !ctx.json_output {
             let pb = ProgressBar::new_spinner();
             pb.set_style(
                 ProgressStyle::default_spinner()
@@ -125,7 +125,7 @@ impl ScaleArgs {
         }
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             let output = serde_json::json!({
                 "success": true,
                 "deployments_scaled": results,

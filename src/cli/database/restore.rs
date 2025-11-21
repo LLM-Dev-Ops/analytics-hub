@@ -53,7 +53,7 @@ pub struct RestoreArgs {
 impl RestoreArgs {
     /// Execute restore command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Database Restore ===".bold().cyan());
             println!();
         }
@@ -77,7 +77,7 @@ impl RestoreArgs {
         };
 
         if ctx.dry_run {
-            if ctx.json {
+            if ctx.json_output {
                 let output = serde_json::json!({
                     "dry_run": true,
                     "restore_config": restore_config,
@@ -98,7 +98,7 @@ impl RestoreArgs {
         }
 
         // Confirm restore (unless forced)
-        if !self.force && !ctx.json {
+        if !self.force && !ctx.json_output {
             println!(
                 "{}",
                 "WARNING: This will restore a backup, potentially overwriting existing data!"
@@ -143,7 +143,7 @@ impl RestoreArgs {
         let manager = TimescaleBackupManager::new(&self.target_namespace, backup_config).await?;
 
         // Show progress
-        let spinner = if !ctx.json {
+        let spinner = if !ctx.json_output {
             let pb = ProgressBar::new_spinner();
             pb.set_style(
                 ProgressStyle::default_spinner()
@@ -168,7 +168,7 @@ impl RestoreArgs {
         }
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
             if result.success {
@@ -246,7 +246,7 @@ pub struct VerifyBackupArgs {
 impl VerifyBackupArgs {
     /// Execute verify backup command
     pub async fn execute(&self, ctx: &ExecutionContext) -> Result<()> {
-        if !ctx.json {
+        if !ctx.json_output {
             println!("{}", "=== Verify Backup ===".bold().cyan());
             println!();
         }
@@ -286,7 +286,7 @@ impl VerifyBackupArgs {
         };
 
         // Output results
-        if ctx.json {
+        if ctx.json_output {
             let output = serde_json::json!({
                 "backup_id": self.backup_id,
                 "verification": result,

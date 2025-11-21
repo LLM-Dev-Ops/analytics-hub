@@ -75,7 +75,7 @@ impl Pipeline {
     /// Create a new pipeline instance
     pub async fn new(config: PipelineConfig) -> Result<Self> {
         // Create database connection
-        let database = Arc::new(Database::new(&config.timescaledb_url).await?);
+        let database = Arc::new(Database::from_url(&config.timescaledb_url).await?);
 
         // Create ingestion config from pipeline config
         let ingestion_config = ingestion::IngestionConfig {
@@ -120,7 +120,7 @@ impl Pipeline {
     }
 
     /// Process a single event
-    pub async fn process_event(&self, event: AnalyticsEvent) -> Result<()> {
+    pub async fn process_event(&mut self, event: AnalyticsEvent) -> Result<()> {
         // Process the event
         let processed = self.processor.process(event).await?;
 
@@ -137,7 +137,7 @@ impl Pipeline {
     }
 
     /// Process a batch of events
-    pub async fn process_batch(&self, events: Vec<AnalyticsEvent>) -> Result<()> {
+    pub async fn process_batch(&mut self, events: Vec<AnalyticsEvent>) -> Result<()> {
         let processed = self.processor.process_batch(events).await?;
 
         self.storage.store_batch(&processed).await?;
