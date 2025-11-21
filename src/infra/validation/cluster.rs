@@ -104,7 +104,7 @@ impl ClusterValidator {
 
                     if has_pressure {
                         nodes_with_pressure += 1;
-                        if let Some(metadata) = &node.metadata {
+                        if let metadata = &node.metadata {
                             debug!("Node {} under resource pressure", metadata.name.as_ref().unwrap_or(&"unknown".to_string()));
                         }
                     }
@@ -125,7 +125,7 @@ impl ClusterValidator {
 
         let pods = self
             .client
-            .list_pods("kube-system")
+            .list_pods_in_namespace("kube-system")
             .await
             .context("Failed to list system pods")?;
 

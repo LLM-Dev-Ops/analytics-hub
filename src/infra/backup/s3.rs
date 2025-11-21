@@ -205,7 +205,10 @@ impl S3BackupStorage {
                                 })
                                 .unwrap_or(BackupType::Full);
 
-                            let timestamp: DateTime<Utc> = last_modified.into();
+                            let timestamp: DateTime<Utc> = last_modified.as_secs_f64()
+                                .try_into()
+                                .map(|secs| DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now))
+                                .unwrap_or_else(|_| Utc::now());
                             let age_days = (Utc::now() - timestamp).num_days();
 
                             backups.push(BackupEntry {

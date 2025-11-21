@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use tracing::{debug, info};
 
 /// Kubernetes client wrapper
+#[derive(Clone)]
 pub struct K8sClient {
     client: Client,
     namespace: String,
@@ -97,7 +98,7 @@ impl K8sClient {
     /// Apply a YAML manifest
     pub async fn apply_manifest(&self, yaml: &str) -> Result<()> {
         let docs: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(yaml)
-            .map(|doc| serde_yaml::Value::deserialize(doc).unwrap())
+            .map(|doc| serde_yaml::from_value::<serde_yaml::Value>(doc.clone()).unwrap())
             .collect();
 
         for doc in docs {

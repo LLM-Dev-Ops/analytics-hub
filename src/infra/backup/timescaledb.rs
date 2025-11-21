@@ -22,13 +22,14 @@ pub struct TimescaleBackupManager {
 impl TimescaleBackupManager {
     /// Create new TimescaleDB backup manager
     pub async fn new(namespace: impl Into<String>, config: BackupConfig) -> Result<Self> {
-        let k8s_client = K8sClient::new(namespace.as_ref()).await?;
+        let namespace_str = namespace.into();
+        let k8s_client = K8sClient::new(&namespace_str).await?;
         let s3_storage = S3BackupStorage::new(config).await?;
 
         Ok(Self {
             k8s_client,
             s3_storage,
-            namespace: namespace.into(),
+            namespace: namespace_str,
         })
     }
 
@@ -317,7 +318,7 @@ impl TimescaleBackupManager {
 
     /// Find TimescaleDB pod
     async fn find_timescaledb_pod(&self) -> Result<String> {
-        let pods = self.k8s_client.list_pods_in_namespace().await?;
+        let pods = self.k8s_client.list_pods_in_namespace(&self.namespace).await?;
 
         for pod in pods {
             if let Some(name) = pod.metadata.name {

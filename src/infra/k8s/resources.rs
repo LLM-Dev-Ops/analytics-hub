@@ -117,7 +117,7 @@ impl ResourceManager {
 
     /// Calculate age of a resource
     fn calculate_age(&self, pod: &Pod) -> String {
-        if let Some(metadata) = &pod.metadata {
+        if let metadata = &pod.metadata {
             if let Some(creation_timestamp) = &metadata.creation_timestamp {
                 let created = creation_timestamp.0;
                 let now = chrono::Utc::now();

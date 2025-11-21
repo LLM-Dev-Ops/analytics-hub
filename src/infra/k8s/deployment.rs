@@ -217,7 +217,7 @@ impl DeploymentManager {
         // Add restart annotation
         let restart_time = chrono::Utc::now().to_rfc3339();
         if let Some(spec) = &mut deployment.spec {
-            if let Some(template) = &mut spec.template {
+            if let template = &mut spec.template {
                 if let Some(metadata) = &mut template.metadata {
                     if metadata.annotations.is_none() {
                         metadata.annotations = Some(std::collections::BTreeMap::new());
