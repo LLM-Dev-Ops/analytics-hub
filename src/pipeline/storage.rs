@@ -6,7 +6,7 @@ use crate::schemas::events::AnalyticsEvent;
 use anyhow::{Context, Result};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::Row;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::{HealthStatus, PipelineComponent, PipelineConfig};
 
@@ -266,7 +266,7 @@ impl StorageManager {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut events = Vec::new();
+        let events = Vec::new();
         for row in rows {
             // Parse the row data - this is simplified, actual implementation would need proper deserialization
             let payload: serde_json::Value = row.try_get("payload")?;

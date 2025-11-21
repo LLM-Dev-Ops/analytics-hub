@@ -1,6 +1,6 @@
 //! Infrastructure cleanup and destruction utilities
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};

@@ -5,7 +5,7 @@
 use crate::schemas::events::AnalyticsEvent;
 use anyhow::{Context, Result};
 use redis::aio::ConnectionManager;
-use redis::{AsyncCommands, Client, RedisError};
+use redis::{AsyncCommands, Client};
 use std::time::Duration;
 use tracing::{debug, info};
 
@@ -205,7 +205,7 @@ impl PipelineComponent for CacheManager {
     }
 
     async fn health_check(&self) -> Result<HealthStatus> {
-        let mut client = self.client.clone();
+        let client = self.client.clone();
         match client.get_connection() {
             Ok(mut conn) => {
                 match redis::cmd("PING").query::<String>(&mut conn) {

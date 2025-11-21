@@ -26,6 +26,9 @@ exclude = [
     "docs/diagrams/*",
     "scripts/*",
     ".env*",
+    "src/bin/*",
+    "benches/*",
+    "src/examples/*",
 ]
 
 [dependencies]
@@ -138,6 +141,7 @@ tempfile = "3.8"
 insta = "1.34"
 pretty_assertions = "1.4"
 test-case = "3.3"
+rand = "0.8"
 
 [features]
 default = ["full"]

@@ -257,12 +257,7 @@ async fn ingest_event(
         .with_label_values(&["llm-events"])
         .inc();
 
-    Ok(Json(ApiResponse {
-        success: true,
-        data: Some(()),
-        error: None,
-        metadata: None,
-    }))
+    Ok(Json(ApiResponse::success(())))
 }
 
 /// Ingest batch of events
@@ -283,16 +278,11 @@ async fn ingest_batch(
         }
     }
 
-    Ok(Json(ApiResponse {
-        success: failed == 0,
-        data: Some(BatchResponse {
-            successful,
-            failed,
-            total: successful + failed,
-        }),
-        error: None,
-        metadata: None,
-    }))
+    Ok(Json(ApiResponse::success(BatchResponse {
+        successful,
+        failed,
+        total: successful + failed,
+    })))
 }
 
 #[derive(Debug, Serialize)]

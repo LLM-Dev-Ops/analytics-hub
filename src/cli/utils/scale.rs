@@ -1,6 +1,6 @@
 //! Scaling utilities for deployments
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use comfy_table::{presets::UTF8_FULL, Table};

@@ -6,7 +6,6 @@
 use colored::Colorize;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, Cell, Table};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Output format for CLI commands
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

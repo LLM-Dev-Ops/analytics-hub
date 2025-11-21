@@ -6,10 +6,10 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::{PgPool, PgPoolOptions, PgQueryResult};
-use sqlx::{query, query_as, FromRow, Row};
+use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::{FromRow, Row};
 use std::time::Duration;
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 pub mod queries;

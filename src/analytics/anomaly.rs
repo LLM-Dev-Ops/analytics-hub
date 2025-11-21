@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::AnalyticsConfig;
 

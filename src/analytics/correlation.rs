@@ -3,16 +3,14 @@
 //! Cross-module event correlation and causal analysis.
 
 use crate::models::correlation::{
-    CorrelationId, CorrelationType, EventGraph, EdgeRelationship, EventNode, EventEdge,
+    EventGraph,
     TimeWindow,
 };
 use crate::schemas::events::AnalyticsEvent;
 use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use dashmap::DashMap;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info};
 use uuid::Uuid;
 
 /// Correlation engine for cross-module event analysis

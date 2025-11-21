@@ -1,7 +1,7 @@
 //! Kubernetes health checking
 
 use super::client::K8sClient;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 

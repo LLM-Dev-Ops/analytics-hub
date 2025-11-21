@@ -7,7 +7,7 @@ use tokio::fs;
 use tracing::info;
 
 use crate::common::{
-    output::{print_error, print_header, print_info, print_step, print_success, CommandOutput},
+    output::{print_header, print_info, print_step, print_success, CommandOutput},
     progress::ProgressTracker,
     ExecutionContext,
 };

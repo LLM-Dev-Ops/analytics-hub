@@ -2,7 +2,6 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 /// Backup configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

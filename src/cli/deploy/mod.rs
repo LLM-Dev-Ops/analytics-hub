@@ -5,7 +5,7 @@ pub mod azure;
 pub mod gcp;
 pub mod k8s;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Subcommand;
 
 use crate::common::ExecutionContext;

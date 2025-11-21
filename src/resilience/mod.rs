@@ -9,8 +9,6 @@ pub use circuit_breaker::CircuitBreaker;
 pub use retry::RetryPolicy;
 
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::time::{sleep, Duration};
 
 /// Resilience configuration
 #[derive(Debug, Clone)]

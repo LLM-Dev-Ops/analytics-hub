@@ -357,17 +357,16 @@ async fn create_topics(bootstrap_servers: &str, dry_run: bool) -> Result<()> {
         }
 
         // Create topic configuration
-        let mut config_map = HashMap::new();
-        for (key, value) in &topic_config.config {
-            config_map.insert(key.to_string(), value.to_string());
-        }
-
-        let new_topic = NewTopic::new(
+        let mut new_topic = NewTopic::new(
             topic_config.name,
             topic_config.partitions,
             TopicReplication::Fixed(topic_config.replication_factor),
-        )
-        .set_config(config_map);
+        );
+
+        // Set topic configuration
+        for (key, value) in &topic_config.config {
+            new_topic = new_topic.set(key, value);
+        }
 
         // Create topic
         let results = admin_client

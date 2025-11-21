@@ -1,6 +1,6 @@
 //! GCP deployment command
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
 use tracing::info;

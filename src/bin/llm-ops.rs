@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::process::{Command, Stdio};
-use tokio::fs;
 use tracing::{info, warn, error};
 
 #[derive(Parser)]
