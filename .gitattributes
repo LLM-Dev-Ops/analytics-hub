@@ -1,0 +1,15 @@
+# Exclude legacy infrastructure scripts from language statistics
+# These scripts have been replaced by the Rust CLI but kept for reference
+infrastructure/k8s/databases/**/*.sh linguist-vendored
+infrastructure/k8s/core/**/*.sh linguist-vendored
+infrastructure/scripts/**/*.sh linguist-vendored
+infrastructure/terraform/**/*.sh linguist-vendored
+
+# Docker build scripts are actively used
+# docker/**/*.sh is NOT excluded
+
+# Include SQL files in statistics
+*.sql linguist-detectable
+
+# Documentation
+*.md linguist-documentation

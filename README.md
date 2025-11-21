@@ -1,6 +1,9 @@
 # LLM Analytics Hub
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/llm-analytics-hub.svg)](https://crates.io/crates/llm-analytics-hub)
+[![npm API](https://img.shields.io/npm/v/@llm-dev-ops/llm-analytics-api.svg)](https://www.npmjs.com/package/@llm-dev-ops/llm-analytics-api)
+[![npm Dashboard](https://img.shields.io/npm/v/@llm-dev-ops/llm-analytics-dashboard.svg)](https://www.npmjs.com/package/@llm-dev-ops/llm-analytics-dashboard)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.3%2B-blue.svg)](https://www.typescriptlang.org/)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-green.svg)](IMPLEMENTATION_COMPLETE.md)
@@ -16,9 +19,10 @@ The LLM Analytics Hub is a **production-ready, high-performance distributed anal
 
 ### 🆕 Recent Major Updates
 
-**Shell-to-Rust Conversion Complete** (November 2025):
-- ✅ **48 shell scripts** replaced with **13,800+ lines** of production-grade Rust
+**Production Release** (November 2025):
 - ✅ **Unified CLI** (`llm-analytics`) for all infrastructure operations
+- ✅ **Published to crates.io**: `llm-analytics-hub` available for Rust projects
+- ✅ **NPM Packages**: API and Dashboard available under `@llm-dev-ops` org
 - ✅ **150+ comprehensive tests** with 70%+ code coverage
 - ✅ **Complete CI/CD pipeline** with GitHub Actions
 - ✅ **Type-safe operations** across all infrastructure components
@@ -204,11 +208,33 @@ llm-analytics database backup --dry-run --json
 
 ### Installation
 
-#### 1. Build the Unified CLI
+#### Option 1: Install from Package Registries
 
+**Rust Crate (from crates.io)**:
+```bash
+# Add to your Cargo.toml
+[dependencies]
+llm-analytics-hub = "0.1.0"
+
+# Or install the CLI directly
+cargo install llm-analytics-hub
+```
+
+**NPM Packages (from npmjs.com)**:
+```bash
+# Backend API Server
+npm install @llm-dev-ops/llm-analytics-api
+
+# Frontend Dashboard
+npm install @llm-dev-ops/llm-analytics-dashboard
+```
+
+#### Option 2: Build from Source
+
+**Build the Unified CLI**:
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/llm-analytics-hub.git
+git clone https://github.com/globalbusinessadvisors/llm-analytics-hub.git
 cd llm-analytics-hub
 
 # Build the CLI (includes all tools)
@@ -635,7 +661,7 @@ llm-analytics-hub/
 - **Rust Core**: 17,000+ lines (analytics + infrastructure)
 - **Test Coverage**: 70%+ (150+ tests)
 - **Documentation**: 15,000+ lines across 30+ documents
-- **Shell Scripts Replaced**: 48 scripts → 13,800 lines of Rust
+- **Published Packages**: crates.io (Rust) + npmjs.com (TypeScript)
 
 #### Rust CLI Implementation (NEW - Phases 1-6)
 
