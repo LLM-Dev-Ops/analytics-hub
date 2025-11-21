@@ -3,7 +3,15 @@ name = "llm-analytics-hub"
 version = "0.1.0"
 edition = "2021"
 authors = ["LLM Analytics Team"]
-description = "Centralized analytics hub for LLM ecosystem monitoring"
+description = "Enterprise-grade analytics hub for LLM ecosystem monitoring with Kafka, TimescaleDB, Redis, and Kubernetes orchestration"
+license = "Apache-2.0"
+repository = "https://github.com/globalbusinessadvisors/llm-analytics-hub"
+homepage = "https://github.com/globalbusinessadvisors/llm-analytics-hub"
+documentation = "https://docs.rs/llm-analytics-hub"
+readme = "README.md"
+keywords = ["llm", "analytics", "kafka", "timescaledb", "kubernetes"]
+categories = ["database", "development-tools", "web-programming"]
+rust-version = "1.70"
 
 [dependencies]
 # Core dependencies
