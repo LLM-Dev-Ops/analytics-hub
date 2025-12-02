@@ -8,7 +8,9 @@
 //! - validate: Validation and testing commands
 //! - health: Health check commands
 //! - utils: Utility commands
+//! - benchmark: Performance benchmark commands
 
+pub mod benchmark;
 pub mod database;
 pub mod deploy;
 pub mod health;
@@ -18,6 +20,7 @@ pub mod utils;
 pub mod validate;
 
 // Re-export command structs for convenience
+pub use benchmark::BenchmarkCommand;
 pub use database::DatabaseCommand;
 pub use deploy::DeployCommand;
 pub use health::HealthCommand;

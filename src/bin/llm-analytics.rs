@@ -9,7 +9,7 @@ use colored::Colorize;
 use tracing_subscriber::EnvFilter;
 
 use llm_analytics_hub::cli::{
-    DatabaseCommand, DeployCommand, HealthCommand, KafkaCommand, RedisCommand, UtilsCommand, ValidateCommand,
+    BenchmarkCommand, DatabaseCommand, DeployCommand, HealthCommand, KafkaCommand, RedisCommand, UtilsCommand, ValidateCommand,
 };
 use llm_analytics_hub::common::ExecutionContext;
 
@@ -81,6 +81,12 @@ enum Commands {
         #[command(subcommand)]
         command: UtilsCommand,
     },
+
+    /// Run performance benchmarks
+    Benchmark {
+        #[command(subcommand)]
+        command: BenchmarkCommand,
+    },
 }
 
 #[tokio::main]
@@ -118,6 +124,7 @@ async fn main() -> Result<()> {
         Commands::Validate { command } => command.execute(&ctx).await,
         Commands::Health { command } => command.execute(&ctx).await,
         Commands::Utils { command } => command.execute(&ctx).await,
+        Commands::Benchmark { command } => command.execute().await,
     };
 
     // Handle result

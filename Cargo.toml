@@ -155,3 +155,15 @@ cloud = ["aws"]
 [lib]
 name = "llm_analytics_hub"
 path = "src/lib.rs"
+
+[[bench]]
+name = "infrastructure_benchmarks"
+harness = false
+
+[[bench]]
+name = "event_processing"
+harness = false
+
+[[bench]]
+name = "analytics_benchmarks"
+harness = false
