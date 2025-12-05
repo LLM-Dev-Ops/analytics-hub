@@ -32,6 +32,24 @@ exclude = [
 ]
 
 [dependencies]
+# LLM-Dev-Ops Ecosystem Dependencies (Phase 2A - Compile-time only)
+# Observatory - Telemetry and observability integration
+llm-observatory-core = "0.1.1"
+llm-observatory-sdk = "0.1.1"
+
+# CostOps - Cost tracking and optimization
+cost-ops = { git = "https://github.com/LLM-Dev-Ops/cost-ops", branch = "main" }
+
+# Memory-Graph - Graph-based memory management
+llm-memory-graph = "0.1.0"
+
+# Registry - Model and asset registry
+llm-registry-core = "0.1.0"
+
+# Config-Manager - Configuration management with security
+llm-config-core = "0.5.0"
+llm-config-storage = "0.5.0"
+
 # Core dependencies
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

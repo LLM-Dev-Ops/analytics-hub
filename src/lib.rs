@@ -67,6 +67,9 @@ pub mod cli;
 pub mod common;
 pub mod infra;
 
+// LLM-Dev-Ops Ecosystem Adapters (Phase 2B)
+pub mod adapters;
+
 // Re-export commonly used types at the crate root
 pub use database::Database;
 pub use pipeline::ingestion::{EventIngester, IngestionConfig, IngestionStats};
@@ -92,6 +95,16 @@ pub use models::correlation::{
 
 pub use models::api::{
     ApiError, ApiResponse, PaginatedResponse, PaginationMetadata, QueryResult, StreamEvent,
+};
+
+// Re-export ecosystem adapters
+pub use adapters::{
+    AdapterHealth, AdapterManager, EcosystemAdapter,
+    observatory::ObservatoryAdapter,
+    costops::CostOpsAdapter,
+    memory_graph::MemoryGraphAdapter,
+    registry::RegistryAdapter,
+    config_manager::ConfigManagerAdapter,
 };
 
 /// Version information

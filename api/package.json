@@ -44,6 +44,9 @@
     "access": "public"
   },
   "dependencies": {
+    "@llm-dev-ops/observatory-sdk": "^0.1.1",
+    "@llm-dev-ops/llm-registry-sdk": "^0.1.0",
+    "@llm-dev-ops/llm-config-core": "^0.5.0",
     "fastify": "^4.25.0",
     "fastify-plugin": "^4.5.1",
     "@fastify/cors": "^8.5.0",
