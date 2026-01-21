@@ -73,16 +73,36 @@ async function buildServer() {
     },
   });
 
-  // Initialize infrastructure
-  const db = await setupDatabase();
-  const redis = await setupRedis();
-  const kafka = await setupKafka();
-  const metrics = setupMetrics();
+  // Initialize infrastructure (optional - gracefully handle missing services)
+  let db = null;
+  let redis = null;
+  let kafka = null;
 
-  // Decorate fastify instance with clients
-  fastify.decorate('db', db);
-  fastify.decorate('redis', redis);
-  fastify.decorate('kafka', kafka);
+  try {
+    db = await setupDatabase();
+    fastify.decorate('db', db);
+  } catch (err) {
+    fastify.log.warn('Database connection not available - running without database');
+    fastify.decorate('db', null);
+  }
+
+  try {
+    redis = await setupRedis();
+    fastify.decorate('redis', redis);
+  } catch (err) {
+    fastify.log.warn('Redis connection not available - running without cache');
+    fastify.decorate('redis', null);
+  }
+
+  try {
+    kafka = await setupKafka();
+    fastify.decorate('kafka', kafka);
+  } catch (err) {
+    fastify.log.warn('Kafka connection not available - running without message queue');
+    fastify.decorate('kafka', null);
+  }
+
+  const metrics = setupMetrics();
   fastify.decorate('metrics', metrics);
 
   // Register routes
@@ -95,9 +115,9 @@ async function buildServer() {
       timestamp: new Date().toISOString(),
       version: '0.1.0',
       services: {
-        database: await db.healthCheck(),
-        redis: await redis.ping(),
-        kafka: true, // TODO: implement Kafka health check
+        database: db ? await db.healthCheck() : 'not configured',
+        redis: redis ? await redis.ping() : 'not configured',
+        kafka: kafka ? true : 'not configured',
       },
     };
   });
