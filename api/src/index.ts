@@ -73,34 +73,49 @@ async function buildServer() {
     },
   });
 
-  // Initialize infrastructure (optional - gracefully handle missing services)
+  // Initialize infrastructure (optional - skip if not explicitly configured)
   let db = null;
   let redis = null;
   let kafka = null;
 
-  try {
-    db = await setupDatabase();
-    fastify.decorate('db', db);
-  } catch (err) {
-    fastify.log.warn('Database connection not available - running without database');
-    fastify.decorate('db', null);
+  // Only connect to database if explicitly configured (not localhost default)
+  if (process.env.DB_HOST && process.env.DB_HOST !== 'localhost') {
+    try {
+      db = await setupDatabase();
+      fastify.log.info('Database connected');
+    } catch (err) {
+      fastify.log.warn({ err }, 'Database connection failed - running without database');
+    }
+  } else {
+    fastify.log.info('Database not configured - running without database');
   }
+  fastify.decorate('db', db as any);
 
-  try {
-    redis = await setupRedis();
-    fastify.decorate('redis', redis);
-  } catch (err) {
-    fastify.log.warn('Redis connection not available - running without cache');
-    fastify.decorate('redis', null);
+  // Only connect to Redis if explicitly configured (not localhost default)
+  if (process.env.REDIS_HOST && process.env.REDIS_HOST !== 'localhost') {
+    try {
+      redis = await setupRedis();
+      fastify.log.info('Redis connected');
+    } catch (err) {
+      fastify.log.warn({ err }, 'Redis connection failed - running without cache');
+    }
+  } else {
+    fastify.log.info('Redis not configured - running without cache');
   }
+  fastify.decorate('redis', redis as any);
 
-  try {
-    kafka = await setupKafka();
-    fastify.decorate('kafka', kafka);
-  } catch (err) {
-    fastify.log.warn('Kafka connection not available - running without message queue');
-    fastify.decorate('kafka', null);
+  // Only connect to Kafka if explicitly configured (not localhost default)
+  if (process.env.KAFKA_BROKERS && !process.env.KAFKA_BROKERS.includes('localhost')) {
+    try {
+      kafka = await setupKafka();
+      fastify.log.info('Kafka connected');
+    } catch (err) {
+      fastify.log.warn({ err }, 'Kafka connection failed - running without message queue');
+    }
+  } else {
+    fastify.log.info('Kafka not configured - running without message queue');
   }
+  fastify.decorate('kafka', kafka as any);
 
   const metrics = setupMetrics();
   fastify.decorate('metrics', metrics);
