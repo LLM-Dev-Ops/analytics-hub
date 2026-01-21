@@ -19,6 +19,25 @@ const EventSchema = z.object({
   payload: z.any(),
 });
 
+// JSON Schema for Fastify validation
+const EventJsonSchema = {
+  type: 'object',
+  properties: {
+    event_id: { type: 'string', format: 'uuid' },
+    timestamp: { type: 'string', format: 'date-time' },
+    source_module: { type: 'string' },
+    event_type: { type: 'string' },
+    correlation_id: { type: 'string', format: 'uuid' },
+    parent_event_id: { type: 'string', format: 'uuid' },
+    schema_version: { type: 'string' },
+    severity: { type: 'string', enum: ['debug', 'info', 'warning', 'error', 'critical'] },
+    environment: { type: 'string' },
+    tags: { type: 'object', additionalProperties: { type: 'string' } },
+    payload: {},
+  },
+  required: ['event_id', 'timestamp', 'source_module', 'event_type', 'schema_version', 'severity', 'environment'],
+};
+
 export async function eventsRoutes(fastify: FastifyInstance) {
   // Ingest a single event
   fastify.post(
@@ -27,7 +46,7 @@ export async function eventsRoutes(fastify: FastifyInstance) {
       schema: {
         description: 'Ingest a single analytics event',
         tags: ['events'],
-        body: EventSchema,
+        body: EventJsonSchema,
         response: {
           201: {
             type: 'object',
@@ -46,14 +65,18 @@ export async function eventsRoutes(fastify: FastifyInstance) {
         // Validate event
         EventSchema.parse(event);
 
-        // Store in database
-        await fastify.db.insertEvent(event);
+        // Store in database (if available)
+        if (fastify.db) {
+          await fastify.db.insertEvent(event);
+        }
 
-        // Publish to Kafka for real-time processing
-        await fastify.kafka.publishEvent(event);
+        // Publish to Kafka for real-time processing (if available)
+        if (fastify.kafka) {
+          await fastify.kafka.publishEvent(event);
+        }
 
         // Update metrics
-        fastify.metrics.eventsProcessed.inc({
+        fastify.metrics?.eventsProcessed?.inc({
           source_module: (event as any).source_module,
           event_type: (event as any).event_type,
         });
@@ -64,7 +87,7 @@ export async function eventsRoutes(fastify: FastifyInstance) {
         });
       } catch (err) {
         fastify.log.error({ err }, 'Failed to ingest event');
-        fastify.metrics.eventsErrors.inc({
+        fastify.metrics?.eventsErrors?.inc({
           source_module: (event as any).source_module || 'unknown',
           event_type: (event as any).event_type || 'unknown',
           error_type: 'ingestion_error',
@@ -83,7 +106,7 @@ export async function eventsRoutes(fastify: FastifyInstance) {
         tags: ['events'],
         body: {
           type: 'array',
-          items: EventSchema,
+          items: EventJsonSchema,
         },
         response: {
           201: {
@@ -103,19 +126,23 @@ export async function eventsRoutes(fastify: FastifyInstance) {
         // Validate all events
         events.forEach((event) => EventSchema.parse(event));
 
-        // Store in database (transaction)
-        await fastify.db.transaction(async (_client) => {
-          for (const event of events) {
-            await fastify.db.insertEvent(event);
-          }
-        });
+        // Store in database (transaction) - if available
+        if (fastify.db) {
+          await fastify.db.transaction(async (_client) => {
+            for (const event of events) {
+              await fastify.db.insertEvent(event);
+            }
+          });
+        }
 
-        // Publish to Kafka
-        await fastify.kafka.publishBatch(events);
+        // Publish to Kafka - if available
+        if (fastify.kafka) {
+          await fastify.kafka.publishBatch(events);
+        }
 
         // Update metrics
         events.forEach((event) => {
-          fastify.metrics.eventsProcessed.inc({
+          fastify.metrics?.eventsProcessed?.inc({
             source_module: event.source_module,
             event_type: event.event_type,
           });
@@ -158,6 +185,11 @@ export async function eventsRoutes(fastify: FastifyInstance) {
       const query = request.query as any;
 
       try {
+        if (!fastify.db) {
+          reply.code(503).send({ error: 'Database not configured' });
+          return;
+        }
+
         const events = await fastify.db.queryEvents(
           new Date(query.start_time),
           new Date(query.end_time),
@@ -202,6 +234,11 @@ export async function eventsRoutes(fastify: FastifyInstance) {
       const { eventId } = request.params;
 
       try {
+        if (!fastify.db) {
+          reply.code(503).send({ error: 'Database not configured' });
+          return;
+        }
+
         const result = await fastify.db.query(
           'SELECT * FROM analytics_events WHERE event_id = $1',
           [eventId]

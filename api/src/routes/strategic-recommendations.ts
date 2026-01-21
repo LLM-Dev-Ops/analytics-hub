@@ -156,36 +156,38 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
         // Validate output
         StrategicRecommendationOutputSchema.parse(output);
 
-        // Store recommendations in database
-        await fastify.db.transaction(async (client) => {
-          for (const recommendation of output.recommendations) {
-            await client.query(
-              `INSERT INTO strategic_recommendations
-               (recommendation_id, category, priority, title, description, rationale,
-                supporting_correlations, supporting_trends, expected_impact, confidence,
-                time_horizon, metadata, generated_at, execution_ref)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)`,
-              [
-                recommendation.recommendationId,
-                recommendation.category,
-                recommendation.priority,
-                recommendation.title,
-                recommendation.description,
-                recommendation.rationale,
-                JSON.stringify(recommendation.supportingCorrelations),
-                JSON.stringify(recommendation.supportingTrends),
-                JSON.stringify(recommendation.expectedImpact),
-                recommendation.confidence,
-                recommendation.timeHorizon,
-                JSON.stringify(recommendation.metadata || {}),
-                executionRef,
-              ]
-            );
-          }
-        });
+        // Store recommendations in database (if available)
+        if (fastify.db) {
+          await fastify.db.transaction(async (client) => {
+            for (const recommendation of output.recommendations) {
+              await client.query(
+                `INSERT INTO strategic_recommendations
+                 (recommendation_id, category, priority, title, description, rationale,
+                  supporting_correlations, supporting_trends, expected_impact, confidence,
+                  time_horizon, metadata, generated_at, execution_ref)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)`,
+                [
+                  recommendation.recommendationId,
+                  recommendation.category,
+                  recommendation.priority,
+                  recommendation.title,
+                  recommendation.description,
+                  recommendation.rationale,
+                  JSON.stringify(recommendation.supportingCorrelations),
+                  JSON.stringify(recommendation.supportingTrends),
+                  JSON.stringify(recommendation.expectedImpact),
+                  recommendation.confidence,
+                  recommendation.timeHorizon,
+                  JSON.stringify(recommendation.metadata || {}),
+                  executionRef,
+                ]
+              );
+            }
+          });
+        }
 
         // Update metrics
-        fastify.metrics.eventsProcessed.inc({
+        fastify.metrics?.eventsProcessed?.inc({
           source_module: 'strategic-recommendation-agent',
           event_type: 'analysis_completed',
         });
@@ -202,7 +204,7 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
         reply.send(output);
       } catch (err) {
         fastify.log.error({ err }, 'Failed to perform strategic analysis');
-        fastify.metrics.eventsErrors.inc({
+        fastify.metrics?.eventsErrors?.inc({
           source_module: 'strategic-recommendation-agent',
           event_type: 'analysis_error',
           error_type: 'analysis_failed',
@@ -235,6 +237,11 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
       const { id } = request.params;
 
       try {
+        if (!fastify.db) {
+          reply.code(503).send({ error: 'Database not configured' });
+          return;
+        }
+
         const result = await fastify.db.query(
           `SELECT
              recommendation_id, category, priority, title, description, rationale,
@@ -321,6 +328,11 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
       const offset = query.offset || 0;
 
       try {
+        if (!fastify.db) {
+          reply.code(503).send({ error: 'Database not configured' });
+          return;
+        }
+
         let sql = `
           SELECT
             recommendation_id, category, priority, title, description, rationale,
@@ -431,6 +443,11 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
       const days = query.days || 7;
 
       try {
+        if (!fastify.db) {
+          reply.code(503).send({ error: 'Database not configured' });
+          return;
+        }
+
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
