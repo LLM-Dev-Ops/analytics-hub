@@ -4,6 +4,11 @@
   "description": "TypeScript API server for LLM Analytics Hub with enterprise security, authentication, and monitoring",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "analytics-hub-cli": "./dist/cli/main.js",
+    "consensus-agent": "./dist/cli/consensus-agent.js",
+    "strategic-recommendation": "./dist/cli/strategic-recommendation.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -11,7 +16,10 @@
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "cli": "ts-node src/cli/main.ts",
+    "cli:sr": "ts-node src/cli/strategic-recommendation.ts",
+    "consensus-agent": "ts-node src/cli/consensus-agent.ts"
   },
   "keywords": [
     "llm",
@@ -27,7 +35,10 @@
     "postgresql",
     "timescaledb",
     "devops",
-    "observability"
+    "observability",
+    "consensus",
+    "agents",
+    "agentics"
   ],
   "author": "LLM Analytics Team",
   "license": "Apache-2.0",
@@ -44,16 +55,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@llm-dev-ops/observatory-sdk": "^0.1.1",
-    "@llm-dev-ops/llm-registry-sdk": "^0.1.0",
-    "@llm-dev-ops/llm-config-core": "^0.5.0",
-    "@llm-dev-ops/llm-infra-core": "^0.1.0",
-    "@llm-dev-ops/llm-infra-config": "^0.1.0",
-    "@llm-dev-ops/llm-infra-logging": "^0.1.0",
-    "@llm-dev-ops/llm-infra-tracing": "^0.1.0",
-    "@llm-dev-ops/llm-infra-cache": "^0.1.0",
-    "@llm-dev-ops/llm-infra-retry": "^0.1.0",
-    "@llm-dev-ops/llm-infra-ratelimit": "^0.1.0",
+    "commander": "^11.1.0",
     "fastify": "^4.25.0",
     "fastify-plugin": "^4.5.1",
     "@fastify/cors": "^8.5.0",
