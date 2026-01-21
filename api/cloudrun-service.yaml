@@ -1,0 +1,116 @@
+# Cloud Run Service Configuration for LLM-Analytics-Hub
+# Unified service exposing all Analytics Hub agents
+#
+# Service Name: llm-analytics-hub
+# Agents Exposed:
+#   - Consensus Agent: /api/v1/agents/consensus/*
+#   - Strategic Recommendation Agent: /api/v1/analytics/strategic-recommendations/*
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llm-analytics-hub
+  labels:
+    app: llm-analytics-hub
+    layer: analytics
+    platform: agentics-dev
+  annotations:
+    run.googleapis.com/description: "LLM Analytics Hub - Analytical Synthesis & Insight Layer"
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # Autoscaling configuration
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        # CPU allocation
+        run.googleapis.com/cpu-throttling: "false"
+        # Startup probe
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: llm-analytics-hub
+      containers:
+        - name: llm-analytics-hub
+          image: us-central1-docker.pkg.dev/PROJECT_ID/llm-dev-ops/llm-analytics-hub:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            # Service identification
+            - name: SERVICE_NAME
+              value: "llm-analytics-hub"
+            - name: SERVICE_VERSION
+              value: "1.0.0"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8080"
+            - name: HOST
+              value: "0.0.0.0"
+
+            # Platform environment (dev | staging | prod)
+            - name: PLATFORM_ENV
+              value: "dev"
+
+            # RuVector Service (persistence layer)
+            - name: RUVECTOR_ENDPOINT
+              value: "https://ruvector-service-PROJECT_ID.REGION.run.app"
+            - name: RUVECTOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ruvector-api-key
+                  key: latest
+
+            # Telemetry (LLM-Observatory)
+            - name: TELEMETRY_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: telemetry-endpoint
+                  key: latest
+
+            # Rate limiting
+            - name: RATE_LIMIT_MAX
+              value: "100"
+            - name: RATE_LIMIT_WINDOW
+              value: "1 minute"
+
+            # Logging
+            - name: LOG_LEVEL
+              value: "info"
+
+          # Probes
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+  traffic:
+    - percent: 100
+      latestRevision: true
