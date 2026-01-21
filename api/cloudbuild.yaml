@@ -60,7 +60,7 @@ steps:
       - '--image=${_ARTIFACT_REGISTRY}/${_PROJECT_ID}/llm-dev-ops/${_SERVICE_NAME}:${SHORT_SHA}'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--allow-unauthenticated=false'
+      - '--no-allow-unauthenticated'
       - '--ingress=internal'
       - '--min-instances=1'
       - '--max-instances=10'
