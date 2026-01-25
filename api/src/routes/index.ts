@@ -8,6 +8,7 @@ import { metricsRoutes } from './metrics';
 import { analyticsRoutes } from './analytics';
 import { consensusRoutes } from './consensus';
 import { strategicRecommendationsRoutes } from './strategic-recommendations';
+import { ecosystemCollaborationRoutes } from './ecosystem-collaboration';
 
 export function registerRoutes(fastify: FastifyInstance): void {
   // Register route modules
@@ -18,4 +19,7 @@ export function registerRoutes(fastify: FastifyInstance): void {
   // Register agent routes
   fastify.register(consensusRoutes, { prefix: '/api/v1/agents/consensus' });
   fastify.register(strategicRecommendationsRoutes, { prefix: '/api/v1/analytics/strategic-recommendations' });
+
+  // Phase 5 - Ecosystem & Collaboration (Layer 1)
+  fastify.register(ecosystemCollaborationRoutes, { prefix: '/api/v1/agents/ecosystem-collaboration' });
 }
