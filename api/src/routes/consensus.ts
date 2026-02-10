@@ -115,12 +115,35 @@ export async function consensusRoutes(fastify: FastifyInstance) {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const response = await handleConsensusRequest({ body: request.body });
+      const graph = request.executionGraph;
+      const agentSpanId = graph?.startAgentSpan('consensus-agent', {
+        agent_id: AGENT_ID,
+        agent_version: AGENT_VERSION,
+        route: '/api/v1/agents/consensus/analyze',
+      });
 
-      reply
-        .code(response.statusCode)
-        .headers(response.headers)
-        .send(JSON.parse(response.body));
+      try {
+        const response = await handleConsensusRequest({ body: request.body });
+        const responseBody = JSON.parse(response.body);
+
+        if (agentSpanId && responseBody.decisionEvent) {
+          graph!.attachArtifact(agentSpanId, {
+            artifact_type: 'decision_event',
+            artifact_id: responseBody.decisionEvent.execution_ref || agentSpanId,
+            data: responseBody.decisionEvent,
+          });
+        }
+
+        graph?.endAgentSpan(agentSpanId!, response.statusCode < 400 ? 'ok' : 'error');
+
+        reply
+          .code(response.statusCode)
+          .headers(response.headers)
+          .send(responseBody);
+      } catch (error) {
+        if (agentSpanId) graph?.endAgentSpan(agentSpanId, 'error');
+        throw error;
+      }
     }
   );
 

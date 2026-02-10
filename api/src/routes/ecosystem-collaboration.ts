@@ -156,12 +156,40 @@ export async function ecosystemCollaborationRoutes(fastify: FastifyInstance) {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const response = await handleEcosystemCollaborationRequest({ body: request.body });
+      const graph = request.executionGraph;
+      const agentSpanId = graph?.startAgentSpan('ecosystem-collaboration-agent', {
+        agent_id: AGENT_ID,
+        agent_version: AGENT_VERSION,
+        route: '/api/v1/agents/ecosystem-collaboration/analyze',
+      });
 
-      reply
-        .code(response.statusCode)
-        .headers(response.headers)
-        .send(JSON.parse(response.body));
+      try {
+        const response = await handleEcosystemCollaborationRequest({ body: request.body });
+        const responseBody = JSON.parse(response.body);
+
+        if (agentSpanId && responseBody.decisionEventId) {
+          graph!.attachArtifact(agentSpanId, {
+            artifact_type: 'decision_event',
+            artifact_id: responseBody.decisionEventId || agentSpanId,
+            data: {
+              decisionEventId: responseBody.decisionEventId,
+              aggregationSignals: responseBody.aggregationSignals,
+              consensusSignals: responseBody.consensusSignals,
+              strategicSignals: responseBody.strategicSignals,
+            },
+          });
+        }
+
+        graph?.endAgentSpan(agentSpanId!, response.statusCode < 400 ? 'ok' : 'error');
+
+        reply
+          .code(response.statusCode)
+          .headers(response.headers)
+          .send(responseBody);
+      } catch (error) {
+        if (agentSpanId) graph?.endAgentSpan(agentSpanId, 'error');
+        throw error;
+      }
     }
   );
 

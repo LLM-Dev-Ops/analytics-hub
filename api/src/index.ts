@@ -18,6 +18,7 @@ import { setupRedis } from './cache';
 import { setupKafka } from './kafka';
 import { setupMetrics } from './metrics';
 import { logger } from './logger';
+import executionContextPlugin from './execution/fastify-plugin';
 
 async function buildServer() {
   const fastify = Fastify({
@@ -72,6 +73,9 @@ async function buildServer() {
       deepLinking: false,
     },
   });
+
+  // Agentics execution context — must be registered before routes
+  await fastify.register(executionContextPlugin);
 
   // Initialize infrastructure (optional - skip if not explicitly configured)
   let db = null;

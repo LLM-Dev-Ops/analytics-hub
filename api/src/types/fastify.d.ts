@@ -6,6 +6,7 @@
 import { Database } from '../database';
 import { CacheManager } from '../cache';
 import { MetricsCollector } from '../metrics';
+import { ExecutionGraph } from '../execution/execution-graph';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -16,5 +17,9 @@ declare module 'fastify' {
       publishBatch: (events: any[]) => Promise<void>;
     };
     metrics: MetricsCollector;
+  }
+
+  interface FastifyRequest {
+    executionGraph: ExecutionGraph | null;
   }
 }

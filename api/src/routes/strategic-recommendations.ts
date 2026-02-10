@@ -11,6 +11,7 @@ import {
   StrategicRecommendationSchema,
   StrategicRecommendation,
 } from '../agents/strategic-recommendation/types';
+import { withDataProcessingSpan } from '../execution';
 
 /**
  * Type definitions for request parameters
@@ -109,6 +110,12 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
     },
     async (request: FastifyRequest<AnalyzeRequest>, reply: FastifyReply) => {
       const { start_time, end_time, domains, focus_areas, min_confidence, max_recommendations } = request.body;
+      const graph = request.executionGraph;
+      const agentSpanId = graph?.startAgentSpan('strategic-recommendation-agent', {
+        agent_id: 'strategic-recommendation-agent',
+        agent_version: '1.0.0',
+        route: '/api/v1/analytics/strategic-recommendations/analyze',
+      });
 
       try {
         const executionRef = uuidv4();
@@ -186,6 +193,21 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
           });
         }
 
+        // Attach analysis artifact to agent span
+        if (agentSpanId) {
+          graph!.attachArtifact(agentSpanId, {
+            artifact_type: 'analysis_result',
+            artifact_id: executionRef,
+            data: {
+              recommendations_count: output.recommendations.length,
+              totalSignalsAnalyzed: output.totalSignalsAnalyzed,
+              overallConfidence: output.overallConfidence,
+              layersAnalyzed: output.analysisMetadata.layersAnalyzed,
+            },
+          });
+          graph!.endAgentSpan(agentSpanId, 'ok');
+        }
+
         // Update metrics
         fastify.metrics?.eventsProcessed?.inc({
           source_module: 'strategic-recommendation-agent',
@@ -203,6 +225,7 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
 
         reply.send(output);
       } catch (err) {
+        if (agentSpanId) graph?.endAgentSpan(agentSpanId, 'error');
         fastify.log.error({ err }, 'Failed to perform strategic analysis');
         fastify.metrics?.eventsErrors?.inc({
           source_module: 'strategic-recommendation-agent',
@@ -236,53 +259,63 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest<GetRecommendationParams>, reply: FastifyReply) => {
       const { id } = request.params;
 
-      try {
-        if (!fastify.db) {
-          reply.code(503).send({ error: 'Database not configured' });
-          return;
-        }
+      await withDataProcessingSpan(
+        request.executionGraph,
+        'recommendation-retrieval',
+        async () => {
+          try {
+            if (!fastify.db) {
+              reply.code(503).send({ error: 'Database not configured' });
+              return;
+            }
 
-        const result = await fastify.db.query(
-          `SELECT
-             recommendation_id, category, priority, title, description, rationale,
-             supporting_correlations, supporting_trends, expected_impact, confidence,
-             time_horizon, metadata, generated_at, execution_ref
-           FROM strategic_recommendations
-           WHERE recommendation_id = $1`,
-          [id]
-        );
+            const result = await fastify.db.query(
+              `SELECT
+                 recommendation_id, category, priority, title, description, rationale,
+                 supporting_correlations, supporting_trends, expected_impact, confidence,
+                 time_horizon, metadata, generated_at, execution_ref
+               FROM strategic_recommendations
+               WHERE recommendation_id = $1`,
+              [id]
+            );
 
-        if (result.rows.length === 0) {
-          reply.code(404).send({ error: 'Recommendation not found' });
-          return;
-        }
+            if (result.rows.length === 0) {
+              reply.code(404).send({ error: 'Recommendation not found' });
+              return;
+            }
 
-        const row = result.rows[0];
-        const recommendation = {
-          recommendationId: row.recommendation_id,
-          category: row.category,
-          priority: row.priority,
-          title: row.title,
-          description: row.description,
-          rationale: row.rationale,
-          supportingCorrelations: JSON.parse(row.supporting_correlations),
-          supportingTrends: JSON.parse(row.supporting_trends),
-          expectedImpact: JSON.parse(row.expected_impact),
-          confidence: row.confidence,
-          timeHorizon: row.time_horizon,
-          metadata: JSON.parse(row.metadata),
-          generatedAt: row.generated_at,
-          executionRef: row.execution_ref,
-        };
+            const row = result.rows[0];
+            const recommendation = {
+              recommendationId: row.recommendation_id,
+              category: row.category,
+              priority: row.priority,
+              title: row.title,
+              description: row.description,
+              rationale: row.rationale,
+              supportingCorrelations: JSON.parse(row.supporting_correlations),
+              supportingTrends: JSON.parse(row.supporting_trends),
+              expectedImpact: JSON.parse(row.expected_impact),
+              confidence: row.confidence,
+              timeHorizon: row.time_horizon,
+              metadata: JSON.parse(row.metadata),
+              generatedAt: row.generated_at,
+              executionRef: row.execution_ref,
+            };
 
-        // Validate the recommendation
-        StrategicRecommendationSchema.parse(recommendation);
+            // Validate the recommendation
+            StrategicRecommendationSchema.parse(recommendation);
 
-        reply.send(recommendation);
-      } catch (err) {
-        fastify.log.error({ err, id }, 'Failed to get recommendation');
-        reply.code(500).send({ error: 'Failed to get recommendation' });
-      }
+            reply.send(recommendation);
+          } catch (err) {
+            fastify.log.error({ err, id }, 'Failed to get recommendation');
+            reply.code(500).send({ error: 'Failed to get recommendation' });
+          }
+        },
+        () => ({
+          artifact_type: 'retrieval_result',
+          data: { recommendation_id: id },
+        }),
+      );
     }
   );
 
@@ -327,92 +360,102 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
       const limit = query.limit || 20;
       const offset = query.offset || 0;
 
-      try {
-        if (!fastify.db) {
-          reply.code(503).send({ error: 'Database not configured' });
-          return;
-        }
+      await withDataProcessingSpan(
+        request.executionGraph,
+        'recommendation-list',
+        async () => {
+          try {
+            if (!fastify.db) {
+              reply.code(503).send({ error: 'Database not configured' });
+              return;
+            }
 
-        let sql = `
-          SELECT
-            recommendation_id, category, priority, title, description, rationale,
-            supporting_correlations, supporting_trends, expected_impact, confidence,
-            time_horizon, metadata, generated_at, execution_ref
-          FROM strategic_recommendations
-          WHERE 1=1
-        `;
-        const params: any[] = [];
-        let paramIndex = 1;
+            let sql = `
+              SELECT
+                recommendation_id, category, priority, title, description, rationale,
+                supporting_correlations, supporting_trends, expected_impact, confidence,
+                time_horizon, metadata, generated_at, execution_ref
+              FROM strategic_recommendations
+              WHERE 1=1
+            `;
+            const params: any[] = [];
+            let paramIndex = 1;
 
-        if (query.start_time) {
-          sql += ` AND generated_at >= $${paramIndex}`;
-          params.push(new Date(query.start_time));
-          paramIndex++;
-        }
+            if (query.start_time) {
+              sql += ` AND generated_at >= $${paramIndex}`;
+              params.push(new Date(query.start_time));
+              paramIndex++;
+            }
 
-        if (query.end_time) {
-          sql += ` AND generated_at <= $${paramIndex}`;
-          params.push(new Date(query.end_time));
-          paramIndex++;
-        }
+            if (query.end_time) {
+              sql += ` AND generated_at <= $${paramIndex}`;
+              params.push(new Date(query.end_time));
+              paramIndex++;
+            }
 
-        if (query.category) {
-          sql += ` AND category = $${paramIndex}`;
-          params.push(query.category);
-          paramIndex++;
-        }
+            if (query.category) {
+              sql += ` AND category = $${paramIndex}`;
+              params.push(query.category);
+              paramIndex++;
+            }
 
-        if (query.priority) {
-          sql += ` AND priority = $${paramIndex}`;
-          params.push(query.priority);
-          paramIndex++;
-        }
+            if (query.priority) {
+              sql += ` AND priority = $${paramIndex}`;
+              params.push(query.priority);
+              paramIndex++;
+            }
 
-        sql += ` ORDER BY generated_at DESC, priority DESC`;
-        sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-        params.push(limit, offset);
+            sql += ` ORDER BY generated_at DESC, priority DESC`;
+            sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+            params.push(limit, offset);
 
-        const result = await fastify.db.query(sql, params);
+            const result = await fastify.db.query(sql, params);
 
-        const recommendations = result.rows.map((row) => ({
-          recommendationId: row.recommendation_id,
-          category: row.category,
-          priority: row.priority,
-          title: row.title,
-          description: row.description,
-          rationale: row.rationale,
-          supportingCorrelations: JSON.parse(row.supporting_correlations),
-          supportingTrends: JSON.parse(row.supporting_trends),
-          expectedImpact: JSON.parse(row.expected_impact),
-          confidence: row.confidence,
-          timeHorizon: row.time_horizon,
-          metadata: JSON.parse(row.metadata),
-          generatedAt: row.generated_at,
-          executionRef: row.execution_ref,
-        }));
+            const recommendations = result.rows.map((row) => ({
+              recommendationId: row.recommendation_id,
+              category: row.category,
+              priority: row.priority,
+              title: row.title,
+              description: row.description,
+              rationale: row.rationale,
+              supportingCorrelations: JSON.parse(row.supporting_correlations),
+              supportingTrends: JSON.parse(row.supporting_trends),
+              expectedImpact: JSON.parse(row.expected_impact),
+              confidence: row.confidence,
+              timeHorizon: row.time_horizon,
+              metadata: JSON.parse(row.metadata),
+              generatedAt: row.generated_at,
+              executionRef: row.execution_ref,
+            }));
 
-        // Get total count for pagination
-        const countResult = await fastify.db.query(
-          'SELECT COUNT(*) FROM strategic_recommendations WHERE 1=1' +
-            (query.start_time ? ' AND generated_at >= $1' : '') +
-            (query.end_time ? ` AND generated_at <= $${query.start_time ? 2 : 1}` : '') +
-            (query.category ? ` AND category = $${(query.start_time ? 1 : 0) + (query.end_time ? 1 : 0) + 1}` : '') +
-            (query.priority
-              ? ` AND priority = $${(query.start_time ? 1 : 0) + (query.end_time ? 1 : 0) + (query.category ? 1 : 0) + 1}`
-              : ''),
-          params.slice(0, -2)
-        );
+            // Get total count for pagination
+            const countResult = await fastify.db.query(
+              'SELECT COUNT(*) FROM strategic_recommendations WHERE 1=1' +
+                (query.start_time ? ' AND generated_at >= $1' : '') +
+                (query.end_time ? ` AND generated_at <= $${query.start_time ? 2 : 1}` : '') +
+                (query.category ? ` AND category = $${(query.start_time ? 1 : 0) + (query.end_time ? 1 : 0) + 1}` : '') +
+                (query.priority
+                  ? ` AND priority = $${(query.start_time ? 1 : 0) + (query.end_time ? 1 : 0) + (query.category ? 1 : 0) + 1}`
+                  : ''),
+              params.slice(0, -2)
+            );
 
-        reply.send({
-          recommendations,
-          total: parseInt(countResult.rows[0].count),
-          limit,
-          offset,
-        });
-      } catch (err) {
-        fastify.log.error({ err }, 'Failed to list recommendations');
-        reply.code(500).send({ error: 'Failed to list recommendations' });
-      }
+            reply.send({
+              recommendations,
+              total: parseInt(countResult.rows[0].count),
+              limit,
+              offset,
+            });
+          } catch (err) {
+            fastify.log.error({ err }, 'Failed to list recommendations');
+            reply.code(500).send({ error: 'Failed to list recommendations' });
+          }
+        },
+        () => ({
+          artifact_type: 'list_result',
+          data: { limit, offset, filters: { category: query.category, priority: query.priority } },
+        }),
+      );
     }
   );
 
@@ -442,59 +485,69 @@ export async function strategicRecommendationsRoutes(fastify: FastifyInstance) {
       const query = request.query;
       const days = query.days || 7;
 
-      try {
-        if (!fastify.db) {
-          reply.code(503).send({ error: 'Database not configured' });
-          return;
-        }
+      await withDataProcessingSpan(
+        request.executionGraph,
+        'recommendation-summary',
+        async () => {
+          try {
+            if (!fastify.db) {
+              reply.code(503).send({ error: 'Database not configured' });
+              return;
+            }
 
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
 
-        let sql = `
-          SELECT
-            category,
-            priority,
-            COUNT(*) as count,
-            AVG(confidence) as avg_confidence,
-            MAX(generated_at) as latest_generated
-          FROM strategic_recommendations
-          WHERE generated_at >= $1
-        `;
-        const params: any[] = [startDate];
+            let sql = `
+              SELECT
+                category,
+                priority,
+                COUNT(*) as count,
+                AVG(confidence) as avg_confidence,
+                MAX(generated_at) as latest_generated
+              FROM strategic_recommendations
+              WHERE generated_at >= $1
+            `;
+            const params: any[] = [startDate];
 
-        if (query.priority) {
-          sql += ' AND priority = $2';
-          params.push(query.priority);
-        }
+            if (query.priority) {
+              sql += ' AND priority = $2';
+              params.push(query.priority);
+            }
 
-        sql += ' GROUP BY category, priority ORDER BY priority DESC, count DESC';
+            sql += ' GROUP BY category, priority ORDER BY priority DESC, count DESC';
 
-        const result = await fastify.db.query(sql, params);
+            const result = await fastify.db.query(sql, params);
 
-        const summary = {
-          period: {
-            days,
-            start: startDate.toISOString(),
-            end: new Date().toISOString(),
-          },
-          totalRecommendations: result.rows.reduce((sum, row) => sum + parseInt(row.count), 0),
-          byCategory: result.rows.map((row) => ({
-            category: row.category,
-            priority: row.priority,
-            count: parseInt(row.count),
-            avgConfidence: parseFloat(row.avg_confidence),
-            latestGenerated: row.latest_generated,
-          })),
-          priorityBreakdown: await getPriorityBreakdown(fastify, startDate, query.priority),
-          topRecommendations: await getTopRecommendations(fastify, startDate, query.priority, 5),
-        };
+            const summary = {
+              period: {
+                days,
+                start: startDate.toISOString(),
+                end: new Date().toISOString(),
+              },
+              totalRecommendations: result.rows.reduce((sum, row) => sum + parseInt(row.count), 0),
+              byCategory: result.rows.map((row) => ({
+                category: row.category,
+                priority: row.priority,
+                count: parseInt(row.count),
+                avgConfidence: parseFloat(row.avg_confidence),
+                latestGenerated: row.latest_generated,
+              })),
+              priorityBreakdown: await getPriorityBreakdown(fastify, startDate, query.priority),
+              topRecommendations: await getTopRecommendations(fastify, startDate, query.priority, 5),
+            };
 
-        reply.send(summary);
-      } catch (err) {
-        fastify.log.error({ err }, 'Failed to get summary');
-        reply.code(500).send({ error: 'Failed to get summary' });
-      }
+            reply.send(summary);
+          } catch (err) {
+            fastify.log.error({ err }, 'Failed to get summary');
+            reply.code(500).send({ error: 'Failed to get summary' });
+          }
+        },
+        () => ({
+          artifact_type: 'summary_result',
+          data: { days, priority_filter: query.priority },
+        }),
+      );
     }
   );
 }
