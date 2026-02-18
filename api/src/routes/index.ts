@@ -9,10 +9,12 @@ import { analyticsRoutes } from './analytics';
 import { consensusRoutes } from './consensus';
 import { strategicRecommendationsRoutes } from './strategic-recommendations';
 import { ecosystemCollaborationRoutes } from './ecosystem-collaboration';
+import { ingestRoutes } from './ingest';
 
 export function registerRoutes(fastify: FastifyInstance): void {
   // Register route modules
   fastify.register(eventsRoutes, { prefix: '/api/v1/events' });
+  fastify.register(ingestRoutes, { prefix: '/api/v1/ingest' });
   fastify.register(metricsRoutes, { prefix: '/api/v1/metrics' });
   fastify.register(analyticsRoutes, { prefix: '/api/v1/analytics' });
 
