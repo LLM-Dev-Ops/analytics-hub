@@ -24,6 +24,9 @@ const UUID_REGEX =
 
 /**
  * Operational paths that are excluded from execution context enforcement.
+ * Also excludes public ingestion endpoints that receive events from
+ * external producers (governance-core fanout, etc.) without an
+ * Agentics execution context.
  */
 function isOperationalPath(url: string): boolean {
   const path = url.split('?')[0];
@@ -39,6 +42,11 @@ function isOperationalPath(url: string): boolean {
 
   // Swagger documentation
   if (path.startsWith('/documentation')) return true;
+
+  // Public ingestion endpoints — external producers won't carry span headers
+  if (path.startsWith('/api/v1/events') || path.startsWith('/api/v1/ingest')) {
+    return true;
+  }
 
   // Agent health and metadata sub-routes (introspection, not execution)
   if (path.endsWith('/health') || path.endsWith('/metadata')) return true;
