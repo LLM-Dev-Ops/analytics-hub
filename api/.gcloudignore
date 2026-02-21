@@ -2,9 +2,7 @@
 .git
 .gitignore
 
-# Source (deploy compiled output only)
-src/
-tsconfig.json
+# Lint/format config
 .eslintrc*
 .prettierrc*
 
