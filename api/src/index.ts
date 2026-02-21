@@ -189,4 +189,7 @@ if (require.main === module) {
   start();
 }
 
+// Cloud Function entry point
+export { handler } from './functions/handler';
+
 export { buildServer, start };

@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Source (deploy compiled output only)
+src/
+tsconfig.json
+.eslintrc*
+.prettierrc*
+
+# Dev dependencies and config
+.env
+.env.*
+!.env.template
+node_modules/
+
+# Tests
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+__tests__/
+coverage/
+
+# Docker (not needed for Cloud Functions)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Cloud Run (not needed for Cloud Functions)
+cloudrun-service.yaml
+cloudbuild.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.tgz
+*.log
