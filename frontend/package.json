@@ -51,9 +51,7 @@
   "dependencies": {
     "@llm-dev-ops/observatory-sdk": "^0.1.1",
     "@llm-dev-ops/llm-registry-sdk": "^0.1.0",
-    "@llm-dev-ops/llm-infra-core": "^0.1.0",
-    "@llm-dev-ops/llm-infra-config": "^0.1.0",
-    "@llm-dev-ops/llm-infra-logging": "^0.1.0",
+    "@llm-dev-ops/infra": "^0.1.0",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@hookform/resolvers": "^3.3.3",
