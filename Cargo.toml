@@ -50,16 +50,16 @@ llm-registry-core = "0.1.0"
 llm-config-core = "0.5.0"
 llm-config-storage = "0.5.0"
 
-# LLM-Infra - Shared infrastructure utilities (Phase 2B)
-# Provides: config loading, structured logging, distributed tracing,
-# error utilities, caching, retry logic, rate limiting, LLM client abstractions
-llm-infra-core = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-config = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-logging = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-tracing = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-cache = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-retry = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
-llm-infra-ratelimit = { git = "https://github.com/LLM-Dev-Ops/llm-infra", branch = "main", optional = true }
+# Infra - Shared infrastructure utilities (Phase 2B)
+# LLM-Dev-Ops/infra publishes flat, separately-named crates and has no aggregator
+# crate; `infra-otel` covers both structured logging and distributed tracing.
+# The repo has no tags, so the git source is pinned to a rev (ADR-015).
+infra-config = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
+infra-otel = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
+infra-errors = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
+infra-cache = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
+infra-retry = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
+infra-rate-limit = { git = "https://github.com/LLM-Dev-Ops/infra", rev = "a8bc89c190f63b139812f30a54e21a25b8f70e81", optional = true }
 
 # Core dependencies
 serde = { version = "1.0", features = ["derive"] }
@@ -182,13 +182,11 @@ aws = ["aws-sdk-eks", "aws-sdk-rds", "aws-sdk-elasticache", "aws-sdk-kafka", "aw
 cloud = ["aws"]
 
 # Phase 2B Infra Integration Features
-infra = ["infra-config", "infra-logging", "infra-tracing", "infra-cache", "infra-retry", "infra-ratelimit"]
-infra-config = ["llm-infra-core", "llm-infra-config"]
-infra-logging = ["llm-infra-core", "llm-infra-logging"]
-infra-tracing = ["llm-infra-core", "llm-infra-tracing"]
-infra-cache = ["llm-infra-core", "llm-infra-cache"]
-infra-retry = ["llm-infra-core", "llm-infra-retry"]
-infra-ratelimit = ["llm-infra-core", "llm-infra-ratelimit"]
+# Each per-crate feature below is the implicit feature of the matching optional
+# dependency. The former `infra-logging`/`infra-tracing`/`infra-ratelimit` aliases
+# are gone: logging and tracing are one crate (`infra-otel`), and the rate-limit
+# crate is `infra-rate-limit`.
+infra = ["infra-config", "infra-otel", "infra-errors", "infra-cache", "infra-retry", "infra-rate-limit"]
 
 [lib]
 name = "llm_analytics_hub"
