@@ -57,7 +57,7 @@ class RuVectorClient {
       for (const [key, value] of this.storage.entries()) {
         if (key.startsWith(`${namespace}:`)) {
           // Mock similarity score
-          const score = Math.random();
+          const score = 1;
           if (score >= threshold) {
             results.push({
               id: key.split(':')[1],
@@ -427,7 +427,7 @@ describe('RuVectorClient', () => {
       const flakyClient = new RuVectorClient();
       const originalStore = flakyClient['withRetry'].bind(flakyClient);
 
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation) => {
+      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation: any) => {
         return originalStore(async () => {
           attemptCount++;
           if (attemptCount < 2) {
@@ -448,7 +448,7 @@ describe('RuVectorClient', () => {
       const flakyClient = new RuVectorClient();
       let attemptCount = 0;
 
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation) => {
+      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation: any) => {
         attemptCount++;
         return operation();
       });
@@ -461,14 +461,14 @@ describe('RuVectorClient', () => {
 
     it('should throw after max retries', async () => {
       const flakyClient = new RuVectorClient();
-
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async () => {
+      const operation = jest.fn(async () => {
         throw new Error('Permanent failure');
       });
 
-      await expect(flakyClient.store('signals', 'sig-1', { value: 100 })).rejects.toThrow(
+      await expect((flakyClient as any).withRetry(operation)).rejects.toThrow(
         /Operation failed after \d+ attempts/
       );
+      expect(operation).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -527,70 +527,338 @@ describe('RuVectorClient', () => {
 
       expect(retrieved.data).toEqual(data);
       expect(typeof retrieved.data.string).toBe('string');
-      expect(typeof retrieved.data.number).toBe('number');
-      expect(typeof retrieved.data.boolean).toBe('boolean');
-      expect(Array.isArray(retrieved.data.array)).toBe(true);
-      expect(typeof retrieved.data.object).toBe('object');
-    });
+      expect(typeof retriewozÚÚ$z{-®éÜj×    priority: 'high',
+          title: 'Test 2',
+          description: 'Test',
+          rationale: 'Test',
+          supportingCorrelations: [],
+          supportingTrends: [],
+          confidence: 0.35, // Low
+          timeHorizon: 'short-term',
+        },
+        {
+          recommendationId: 'rec-3',
+          category: 'cost-optimization',
+          priority: 'high',
+          title: 'Test 3',
+          description: 'Test',
+          rationale: 'Test',
+          supportingCorrelations: [],
+          supportingTrends: [],
+          confidence: 0.5, // Medium
+          timeHorizon: 'short-term',
+        },
+        {
+          recommendationId: 'rec-4',
+          category: 'cost-optimization',
+          priority: 'high',
+          title: 'Test 4',
+          description: 'Test',
+          rationale: 'Test',
+          supportingCorrelations: [],
+          supportingTrends: [],
+          confidence: 0.75, // High
+          timeHorizon: 'short-term',
+        },
+        {
+          recommendationId: 'rec-5',
+          category: 'cost-optimization',
+          priority: 'high',
+          title: 'Test 5',
+          description: 'Test',
+          rationale: 'Test',
+          supportingCorrelations: [],
+          supportingTrends: [],
+          confidence: 0.95, // Very High
+          timeHorizon: 'short-term',
+        },
+      ];
 
-    it('should handle large objects', async () => {
-      const largeData = {
-        items: Array.from({ length: 1000 }, (_, i) => ({
-          id: i,
-          value: Math.random(),
-          timestamp: new Date().toISOString(),
-        })),
-      };
+      telemetry.emitRecommendationGenerated(recommendations);
 
-      await expect(client.store('test', 'large-1', largeData)).resolves.not.toThrow();
-
-      const retrieved = await client.get('test', 'large-1');
-      expect(retrieved.data.items.length).toBe(1000);
-    });
-
-    it('should handle special characters in IDs', async () => {
-      const specialIds = ['sig-123', 'sig_456', 'sig.789', 'sig@abc'];
-
-      for (const id of specialIds) {
-        await client.store('signals', id, { value: 100 });
-        const retrieved = await client.get('signals', id);
-        expect(retrieved).not.toBeNull();
-      }
+      await telemetry.flush();
     });
   });
 
-  describe('Namespace Isolation', () => {
-    it('should isolate data by namespace', async () => {
-      await client.store('signals', 'item-1', { type: 'signal' });
-      await client.store('trends', 'item-1', { type: 'trend' });
+  describe('emitCorrelationDetected', () => {
+    it('should emit correlation detection metrics', async () => {
+      const correlations: CrossDomainCorrelation[] = [
+        {
+          correlationId: 'corr-1',
+          primaryTrend: {
+            metricType: 'latency',
+            layer: 'observatory',
+            direction: 'increasing',
+            magnitude: 0.8,
+            velocity: 0.05,
+            dataPoints: 50,
+            confidence: 0.9,
+          },
+          secondaryTrend: {
+            metricType: 'cpu_usage',
+            layer: 'observatory',
+            direction: 'increasing',
+            magnitude: 0.75,
+            velocity: 0.04,
+            dataPoints: 50,
+            confidence: 0.85,
+          },
+          correlationCoefficient: 0.87,
+          strength: 'strong',
+          lagTime: 2,
+          causality: 'potential',
+        },
+        {
+          correlationId: 'corr-2',
+          primaryTrend: {
+            metricType: 'cost',
+            layer: 'cost-ops',
+            direction: 'decreasing',
+            magnitude: 0.5,
+            velocity: -0.03,
+            dataPoints: 50,
+            confidence: 0.7,
+          },
+          secondaryTrend: {
+            metricType: 'requests',
+            layer: 'observatory',
+            direction: 'decreasing',
+            magnitude: 0.55,
+            velocity: -0.025,
+            dataPoints: 50,
+            confidence: 0.72,
+          },
+          correlationCoefficient: 0.92,
+          strength: 'strong',
+          lagTime: 1,
+          causality: 'likely',
+        },
+        {
+          correlationId: 'corr-3',
+          primaryTrend: {
+            metricType: 'error_rate',
+            layer: 'observatory',
+            direction: 'stable',
+            magnitude: 0.2,
+            velocity: 0,
+            dataPoints: 50,
+            confidence: 0.6,
+          },
+          secondaryTrend: {
+            metricType: 'memory_usage',
+            layer: 'observatory',
+            direction: 'stable',
+            magnitude: 0.15,
+            velocity: 0,
+            dataPoints: 50,
+            confidence: 0.55,
+          },
+          correlationCoefficient: 0.45,
+          strength: 'moderate',
+          causality: 'none',
+        },
+      ];
 
-      const signal = await client.get('signals', 'item-1');
-      const trend = await client.get('trends', 'item-1');
+      telemetry.emitCorrelationDetected(correlations, 250);
 
-      expect(signal.data.type).toBe('signal');
-      expect(trend.data.type).toBe('trend');
+      await telemetry.flush();
     });
 
-    it('should not find items in wrong namespace', async () => {
-      await client.store('signals', 'item-1', { value: 100 });
+    it('should track correlation strength distribution', async () => {
+      const correlations: CrossDomainCorrelation[] = [
+        // Strong correlations
+        ...Array(3).fill(null).map((_, i) => ({
+          correlationId: `strong-${i}`,
+          primaryTrend: {
+            metricType: 'metric1',
+            layer: 'layer1',
+            direction: 'increasing' as const,
+            magnitude: 0.8,
+            velocity: 0.05,
+            dataPoints: 50,
+            confidence: 0.9,
+          },
+          secondaryTrend: {
+            metricType: 'metric2',
+            layer: 'layer2',
+            direction: 'increasing' as const,
+            magnitude: 0.75,
+            velocity: 0.04,
+            dataPoints: 50,
+            confidence: 0.85,
+          },
+          correlationCoefficient: 0.85,
+          strength: 'strong' as const,
+        })),
+        // Moderate correlations
+        ...Array(2).fill(null).map((_, i) => ({
+          correlationId: `moderate-${i}`,
+          primaryTrend: {
+            metricType: 'metric3',
+            layer: 'layer1',
+            direction: 'stable' as const,
+            magnitude: 0.5,
+            velocity: 0,
+            dataPoints: 50,
+            confidence: 0.7,
+          },
+          secondaryTrend: {
+            metricType: 'metric4',
+            layer: 'layer2',
+            direction: 'stable' as const,
+            magnitude: 0.45,
+            velocity: 0,
+            dataPoints: 50,
+            confidence: 0.65,
+          },
+          correlationCoefficient: 0.65,
+          strength: 'moderate' as const,
+        })),
+        // Weak correlations
+        {
+          correlationId: 'weak-1',
+          primaryTrend: {
+            metricType: 'metric5',
+            layer: 'layer1',
+            direction: 'decreasing' as const,
+            magnitude: 0.3,
+            velocity: -0.02,
+            dataPoints: 50,
+            confidence: 0.5,
+          },
+          secondaryTrend: {
+            metricType: 'metric6',
+            layer: 'layer2',
+            direction: 'decreasing' as const,
+            magnitude: 0.25,
+            velocity: -0.015,
+            dataPoints: 50,
+            confidence: 0.45,
+          },
+          correlationCoefficient: 0.35,
+          strength: 'weak' as const,
+        },
+      ];
 
-      const result = await client.get('trends', 'item-1');
+      telemetry.emitCorrelationDetected(correlations, 150);
 
-      expect(result).toBeNull();
+      await telemetry.flush();
+    });
+  });
+
+  describe('emitDecisionEventPersisted', () => {
+    it('should emit decision event persistence metrics on success', async () => {
+      const decisionEvent = {
+        agent_id: 'strategic-agent-1',
+        decision_type: 'strategic_recommendation',
+        confidence: 0.85,
+      };
+
+      telemetry.emitDecisionEventPersisted(decisionEvent, 50, true);
+
+      await telemetry.flush();
     });
 
-    it('should search only within specified namespace', async () => {
-      await client.store('signals', 'sig-1', { value: 100 });
-      await client.store('trends', 'trend-1', { value: 200 });
+    it('should emit decision event persistence metrics on failure', async () => {
+      const decisionEvent = {
+        agent_id: 'strategic-agent-1',
+        decision_type: 'strategic_recommendation',
+        confidence: 0.85,
+      };
 
-      const signalResults = await client.search('signals', {});
-      const trendResults = await client.search('trends', {});
+      telemetry.emitDecisionEventPersisted(decisionEvent, 50, false);
 
-      expect(signalResults.some((r) => r.id.startsWith('sig-'))).toBe(true);
-      expect(signalResults.some((r) => r.id.startsWith('trend-'))).toBe(false);
+      await telemetry.flush();
+    });
+  });
 
-      expect(trendResults.some((r) => r.id.startsWith('trend-'))).toBe(true);
-      expect(trendResults.some((r) => r.id.startsWith('sig-'))).toBe(false);
+  describe('emitAgentOutputAnalysis', () => {
+    it('should emit comprehensive agent output metrics', async () => {
+      const output: StrategicRecommendationOutput = {
+        recommendations: [
+          {
+            recommendationId: 'rec-1',
+            category: 'cost-optimization',
+            priority: 'high',
+            title: 'Optimize costs',
+            description: 'Implementation details',
+            rationale: 'Based on trend analysis',
+            supportingCorrelations: ['corr-1', 'corr-2'],
+            supportingTrends: ['trend-1'],
+            confidence: 0.85,
+            timeHorizon: 'short-term',
+          },
+        ],
+        totalSignalsAnalyzed: 1250,
+        trendsIdentified: 15,
+        correlationsFound: 8,
+        overallConfidence: 0.78,
+        analysisMetadata: {
+          timeWindow: {
+            startTime: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            endTime: new Date().toISOString(),
+          },
+          layersAnalyzed: ['observatory', 'cost-ops', 'governance'],
+          processingDuration: 1500,
+        },
+      };
+
+      telemetry.emitAgentOutputAnalysis(output, 1500);
+
+      await telemetry.flush();
+    });
+  });
+
+  describe('OpenTelemetryBridge', () => {
+    it('should create span context from telemetry context', () => {
+      const context = createTelemetryContext('agent-1', '1.0.0');
+      const spanContext = OpenTelemetryBridge.createSpanContext(context);
+
+      expect(spanContext['trace-id']).toBe(context.correlationId);
+      expect(spanContext['span-id']).toBe(context.executionId);
+      expect(spanContext['agent-id']).toBe(context.agentId);
+      expect(spanContext['agent-version']).toBe(context.agentVersion);
+    });
+
+    it('should add context as span attributes', () => {
+      const context = createTelemetryContext('agent-1', '1.0.0');
+      const mockSpan = {
+        setAttributes: jest.fn(),
+      };
+
+      OpenTelemetryBridge.addContextAsSpanAttributes(mockSpan, context);
+
+      expect(mockSpan.setAttributes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'agent.id': context.agentId,
+          'agent.version': context.agentVersion,
+          'execution.id': context.executionId,
+          'correlation.id': context.correlationId,
+          'environment': context.environment,
+        })
+      );
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should handle errors in emitAgentInvocation gracefully', async () => {
+      // This should not throw
+      telemetry.emitAgentInvocation(
+        { test: 'data' },
+        undefined,
+        100,
+        true
+      );
+
+      await telemetry.flush();
+    });
+
+    it('should handle errors in emitRecommendationGenerated gracefully', async () => {
+      const recommendations: StrategicRecommendation[] = [];
+
+      telemetry.emitRecommendationGenerated(recommendations);
+
+      await telemetry.flush();
     });
   });
 });

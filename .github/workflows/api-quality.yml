@@ -1,0 +1,45 @@
+name: API Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - '.github/workflows/api-quality.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - '.github/workflows/api-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  api-quality:
+    name: Build and test API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20.19.5'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: api
+        run: npm ci --ignore-scripts
+
+      - name: Build API
+        working-directory: api
+        run: npm run build
+
+      - name: Run API tests
+        working-directory: api
+        run: npm test -- --runInBand --silent

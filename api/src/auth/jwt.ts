@@ -32,10 +32,29 @@ export class JWTManager {
   private refreshTokenExpiry: string;
 
   constructor() {
-    this.accessTokenSecret = process.env.JWT_ACCESS_SECRET || this.generateSecret();
-    this.refreshTokenSecret = process.env.JWT_REFRESH_SECRET || this.generateSecret();
+    this.accessTokenSecret = this.resolveSecret('JWT_ACCESS_SECRET');
+    this.refreshTokenSecret = this.resolveSecret('JWT_REFRESH_SECRET');
+
+    if (this.accessTokenSecret === this.refreshTokenSecret) {
+      throw new Error('JWT access and refresh secrets must be different');
+    }
+
     this.accessTokenExpiry = process.env.JWT_ACCESS_EXPIRY || '15m';
     this.refreshTokenExpiry = process.env.JWT_REFRESH_EXPIRY || '7d';
+  }
+
+  private resolveSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'): string {
+    const secret = process.env[name];
+
+    if (secret && Buffer.byteLength(secret, 'utf8') >= 32) {
+      return secret;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`${name} must be configured with at least 32 bytes in production`);
+    }
+
+    return this.generateSecret();
   }
 
   private generateSecret(): string {
@@ -53,6 +72,7 @@ export class JWTManager {
       },
       this.accessTokenSecret,
       {
+        algorithm: 'HS256',
         expiresIn: this.accessTokenExpiry as string,
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
@@ -67,6 +87,7 @@ export class JWTManager {
       },
       this.refreshTokenSecret,
       {
+        algorithm: 'HS256',
         expiresIn: this.refreshTokenExpiry as string,
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
@@ -86,6 +107,7 @@ export class JWTManager {
   async verifyAccessToken(token: string): Promise<JWTPayload> {
     try {
       const decoded = jwt.verify(token, this.accessTokenSecret, {
+        algorithms: ['HS256'],
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
       }) as JWTPayload & { type: string };
@@ -112,6 +134,7 @@ export class JWTManager {
   async verifyRefreshToken(token: string): Promise<{ userId: string; sessionId: string }> {
     try {
       const decoded = jwt.verify(token, this.refreshTokenSecret, {
+        algorithms: ['HS256'],
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
       }) as { userId: string; sessionId: string; type: string };
