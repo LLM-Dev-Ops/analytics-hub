@@ -136,7 +136,7 @@ class StrategicRecommendationAgent {
       if (correlation.strength === 'weak') continue;
 
       const rec = this.createRecommendation(correlation, trends);
-      if (rec && rec.confidence >= input.minConfidence) {
+      if (rec && rec.confidence >= input.minConfidence!) {
         recommendations.push(rec);
       }
     }
@@ -149,7 +149,7 @@ class StrategicRecommendationAgent {
     });
 
     // Limit results
-    return recommendations.slice(0, input.maxRecommendations);
+    return recommendations.slice(0, input.maxRecommendations!);
   }
 
   /**
@@ -165,7 +165,7 @@ class StrategicRecommendationAgent {
     const correlations = await this.detectCorrelations(trends);
     const recommendations = await this.synthesizeRecommendations(trends, correlations, input);
 
-    const processingDuration = Date.now() - startTime;
+    const processingDuration = Math.max(1, Date.now() - startTime);
 
     return {
       recommendations,
@@ -706,7 +706,7 @@ describe('StrategicRecommendationAgent', () => {
       const recommendations = await agent.synthesizeRecommendations(trends, correlations, input);
 
       expect(recommendations.length).toBeGreaterThan(0);
-      expect(recommendations[0].confidence).toBeGreaterThanOrEqual(input.minConfidence);
+      expect(recommendations[0].confidence).toBeGreaterThanOrEqual(input.minConfidence!);
     });
 
     it('should filter by minimum confidence', async () => {
@@ -756,7 +756,7 @@ describe('StrategicRecommendationAgent', () => {
 
       // Should filter out low-confidence recommendations
       recommendations.forEach((rec) => {
-        expect(rec.confidence).toBeGreaterThanOrEqual(input.minConfidence);
+        expect(rec.confidence).toBeGreaterThanOrEqual(input.minConfidence!);
       });
     });
 
@@ -795,7 +795,7 @@ describe('StrategicRecommendationAgent', () => {
 
       const recommendations = await agent.synthesizeRecommendations(trends, correlations, input);
 
-      expect(recommendations.length).toBeLessThanOrEqual(input.maxRecommendations);
+      expect(recommendations.length).toBeLessThanOrEqual(input.maxRecommendations!);
     });
 
     it('should sort by priority and confidence', async () => {

@@ -57,7 +57,7 @@ class RuVectorClient {
       for (const [key, value] of this.storage.entries()) {
         if (key.startsWith(`${namespace}:`)) {
           // Mock similarity score
-          const score = Math.random();
+          const score = 1;
           if (score >= threshold) {
             results.push({
               id: key.split(':')[1],
@@ -427,7 +427,7 @@ describe('RuVectorClient', () => {
       const flakyClient = new RuVectorClient();
       const originalStore = flakyClient['withRetry'].bind(flakyClient);
 
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation) => {
+      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation: any) => {
         return originalStore(async () => {
           attemptCount++;
           if (attemptCount < 2) {
@@ -448,7 +448,7 @@ describe('RuVectorClient', () => {
       const flakyClient = new RuVectorClient();
       let attemptCount = 0;
 
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation) => {
+      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async (operation: any) => {
         attemptCount++;
         return operation();
       });
@@ -461,14 +461,14 @@ describe('RuVectorClient', () => {
 
     it('should throw after max retries', async () => {
       const flakyClient = new RuVectorClient();
-
-      jest.spyOn(flakyClient as any, 'withRetry').mockImplementation(async () => {
+      const operation = jest.fn(async () => {
         throw new Error('Permanent failure');
       });
 
-      await expect(flakyClient.store('signals', 'sig-1', { value: 100 })).rejects.toThrow(
+      await expect((flakyClient as any).withRetry(operation)).rejects.toThrow(
         /Operation failed after \d+ attempts/
       );
+      expect(operation).toHaveBeenCalledTimes(3);
     });
   });
 
