@@ -180,8 +180,11 @@ export class RBACManager {
     }
 
     // Organization-level access control
-    if (resource.organizationId && user.organizationId) {
-      if (resource.organizationId !== user.organizationId) {
+    if (resource.organizationId !== undefined) {
+      // A missing tenant claim must not turn a scoped resource into a global one.
+      if (typeof resource.organizationId !== 'string' ||
+          resource.organizationId.trim().length === 0 ||
+          resource.organizationId !== user.organizationId) {
         return false;
       }
     }
@@ -195,7 +198,8 @@ export class RBACManager {
 
       // Admins can access all resources in their org
       if (roles.includes(Role.ADMIN)) {
-        return true;
+        return Boolean(resource.organizationId &&
+          resource.organizationId === user.organizationId);
       }
 
       return false;

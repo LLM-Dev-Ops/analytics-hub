@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -43,3 +45,27 @@ jobs:
       - name: Run API tests
         working-directory: api
         run: npm test -- --runInBand --silent
+
+      - name: Evaluate frozen authorization gates and signed replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline="$(mktemp -d "$RUNNER_TEMP/analytics-auth-baseline.XXXXXX")"
+          tools="$(mktemp -d "$RUNNER_TEMP/analytics-auth-tools.XXXXXX")"
+          git fetch --no-tags origin 0021e2d7504db3046128bc2e6144983194f802fa
+          git archive 0021e2d7504db3046128bc2e6144983194f802fa | tar -x -C "$baseline"
+          npm ci --ignore-scripts --prefix "$baseline/api"
+          npm run build --prefix "$baseline/api"
+          npm install --prefix "$tools" --ignore-scripts --no-audit --no-fund --save-exact @metaharness/flywheel@0.1.12
+          node api/security/evaluate-auth.mjs "$baseline/api" "$GITHUB_WORKSPACE/api" "$tools" "$RUNNER_TEMP/analytics-auth-flywheel.json"
+          node api/security/benchmark-auth.cjs "$baseline/api" "$GITHUB_WORKSPACE/api" "$RUNNER_TEMP/analytics-auth-benchmark.json"
+
+      - name: Retain synthetic authorization evaluation receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: analytics-auth-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/analytics-auth-flywheel.json
+            ${{ runner.temp }}/analytics-auth-benchmark.json
+          if-no-files-found: error
