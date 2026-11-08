@@ -33,7 +33,15 @@ function regression(root) {
   assert(assertions.every(x => x.status === 'passed'));
   const names = assertions.map(x => x.fullName).sort();
   if (root === baseline) { assert.equal(names.length, 189); oldNames = names; }
-  else { assert.equal(names.length, 219); assert(oldNames.every(x => names.includes(x))); }
+  else {
+    // Retain the complete pre-cycle assertion set, not a brittle total that
+    // rejects additive tests. No original assertion may disappear or skip.
+    const frozenNames = JSON.parse(readFileSync(new URL('./original-assertions-20261107.json', import.meta.url)));
+    assert.equal(frozenNames.length, 219);
+    assert(frozenNames.every(x => names.includes(x)));
+    assert(oldNames.every(x => names.includes(x)));
+    assert(names.includes('compiled RBAC resource-owner boundary denies malformed scoped owners and preserves valid role/tenant behavior'));
+  }
   return { exit: run.status, assertions: names.length, retainedNames: oldNames, skipped: 0, reportPath };
 }
 
