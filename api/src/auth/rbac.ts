@@ -190,7 +190,12 @@ export class RBACManager {
     }
 
     // User-level access control
-    if (resource.userId) {
+    if (resource.userId !== undefined) {
+      // A malformed owner must not erase resource scoping or reach the
+      // same-organization admin allowance. Resource data needs runtime checks.
+      if (typeof resource.userId !== 'string' || resource.userId.trim().length === 0) {
+        return false;
+      }
       // Users can access their own resources
       if (resource.userId === user.userId) {
         return true;
