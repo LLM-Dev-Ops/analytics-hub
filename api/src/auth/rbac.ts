@@ -180,14 +180,22 @@ export class RBACManager {
     }
 
     // Organization-level access control
-    if (resource.organizationId && user.organizationId) {
-      if (resource.organizationId !== user.organizationId) {
+    if (resource.organizationId !== undefined) {
+      // A missing tenant claim must not turn a scoped resource into a global one.
+      if (typeof resource.organizationId !== 'string' ||
+          resource.organizationId.trim().length === 0 ||
+          resource.organizationId !== user.organizationId) {
         return false;
       }
     }
 
     // User-level access control
-    if (resource.userId) {
+    if (resource.userId !== undefined) {
+      // A malformed owner must not erase resource scoping or reach the
+      // same-organization admin allowance. Resource data needs runtime checks.
+      if (typeof resource.userId !== 'string' || resource.userId.trim().length === 0) {
+        return false;
+      }
       // Users can access their own resources
       if (resource.userId === user.userId) {
         return true;
@@ -195,7 +203,8 @@ export class RBACManager {
 
       // Admins can access all resources in their org
       if (roles.includes(Role.ADMIN)) {
-        return true;
+        return Boolean(resource.organizationId &&
+          resource.organizationId === user.organizationId);
       }
 
       return false;

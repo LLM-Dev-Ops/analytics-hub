@@ -4,7 +4,7 @@
  * Tests for telemetry emission and tracking metrics
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   StrategicRecommendationTelemetry,
   createTelemetryContext,
@@ -501,7 +501,7 @@ describe('StrategicRecommendationTelemetry', () => {
     it('should add context as span attributes', () => {
       const context = createTelemetryContext('agent-1', '1.0.0');
       const mockSpan = {
-        setAttributes: vi.fn(),
+        setAttributes: jest.fn(),
       };
 
       OpenTelemetryBridge.addContextAsSpanAttributes(mockSpan, context);

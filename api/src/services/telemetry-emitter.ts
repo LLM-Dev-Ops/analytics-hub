@@ -213,6 +213,7 @@ export class TelemetryEmitter {
         logger.warn({ msg: 'Telemetry auto-flush failed', error: err.message });
       });
     }, this.config.flushIntervalMs);
+    this.flushTimer.unref();
   }
 
   /**

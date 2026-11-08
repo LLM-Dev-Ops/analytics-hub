@@ -6,6 +6,7 @@
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import { promisify } from 'util';
+import { Role } from './rbac';
 
 const randomBytesAsync = promisify(randomBytes);
 
@@ -32,14 +33,60 @@ export class JWTManager {
   private refreshTokenExpiry: string;
 
   constructor() {
-    this.accessTokenSecret = process.env.JWT_ACCESS_SECRET || this.generateSecret();
-    this.refreshTokenSecret = process.env.JWT_REFRESH_SECRET || this.generateSecret();
+    this.accessTokenSecret = this.resolveSecret('JWT_ACCESS_SECRET');
+    this.refreshTokenSecret = this.resolveSecret('JWT_REFRESH_SECRET');
+
+    if (this.accessTokenSecret === this.refreshTokenSecret) {
+      throw new Error('JWT access and refresh secrets must be different');
+    }
+
     this.accessTokenExpiry = process.env.JWT_ACCESS_EXPIRY || '15m';
     this.refreshTokenExpiry = process.env.JWT_REFRESH_EXPIRY || '7d';
   }
 
+  private resolveSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'): string {
+    const secret = process.env[name];
+
+    if (secret && Buffer.byteLength(secret, 'utf8') >= 32) {
+      return secret;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`${name} must be configured with at least 32 bytes in production`);
+    }
+
+    return this.generateSecret();
+  }
+
   private generateSecret(): string {
     return randomBytes(64).toString('hex');
+  }
+
+  /** A valid signature authenticates bytes, not their application-level types. */
+  private validateClaims(decoded: unknown, expectedType: 'access' | 'refresh'): void {
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) {
+      throw new Error('Invalid token payload');
+    }
+    const claims = decoded as Record<string, unknown>;
+    if (claims.type !== expectedType) throw new Error('Invalid token type');
+
+    const nonBlankString = (value: unknown): value is string =>
+      typeof value === 'string' && value.trim().length > 0;
+    if (!nonBlankString(claims.userId) || !nonBlankString(claims.sessionId) ||
+        typeof claims.exp !== 'number' || !Number.isFinite(claims.exp)) {
+      throw new Error('Invalid token payload');
+    }
+    if (expectedType === 'refresh') return;
+
+    const knownRoles = Object.values(Role) as string[];
+    if (!nonBlankString(claims.email) ||
+        !Array.isArray(claims.roles) || !claims.roles.every(role =>
+          typeof role === 'string' && knownRoles.includes(role)) ||
+        !Array.isArray(claims.permissions) || !claims.permissions.every(nonBlankString) ||
+        typeof claims.mfaVerified !== 'boolean' ||
+        (claims.organizationId !== undefined && !nonBlankString(claims.organizationId))) {
+      throw new Error('Invalid token payload');
+    }
   }
 
   /**
@@ -53,6 +100,7 @@ export class JWTManager {
       },
       this.accessTokenSecret,
       {
+        algorithm: 'HS256',
         expiresIn: this.accessTokenExpiry as string,
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
@@ -67,6 +115,7 @@ export class JWTManager {
       },
       this.refreshTokenSecret,
       {
+        algorithm: 'HS256',
         expiresIn: this.refreshTokenExpiry as string,
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
@@ -86,13 +135,12 @@ export class JWTManager {
   async verifyAccessToken(token: string): Promise<JWTPayload> {
     try {
       const decoded = jwt.verify(token, this.accessTokenSecret, {
+        algorithms: ['HS256'],
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
       }) as JWTPayload & { type: string };
 
-      if (decoded.type !== 'access') {
-        throw new Error('Invalid token type');
-      }
+      this.validateClaims(decoded, 'access');
 
       return decoded;
     } catch (error) {
@@ -112,13 +160,12 @@ export class JWTManager {
   async verifyRefreshToken(token: string): Promise<{ userId: string; sessionId: string }> {
     try {
       const decoded = jwt.verify(token, this.refreshTokenSecret, {
+        algorithms: ['HS256'],
         issuer: 'llm-analytics-hub',
         audience: 'llm-analytics-api',
       }) as { userId: string; sessionId: string; type: string };
 
-      if (decoded.type !== 'refresh') {
-        throw new Error('Invalid token type');
-      }
+      this.validateClaims(decoded, 'refresh');
 
       return { userId: decoded.userId, sessionId: decoded.sessionId };
     } catch (error) {

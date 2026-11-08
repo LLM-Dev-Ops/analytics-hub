@@ -567,7 +567,7 @@ export function createDecisionEvent(
         layers: input.sourceLayers,
       },
       confidenceBands: {
-        lower: input.minConfidence,
+        lower: input.minConfidence ?? 0.5,
         upper: 1.0,
       },
     },
@@ -612,7 +612,7 @@ function createInputsHash(inputs: unknown): string {
 export async function analyze(
   input: StrategicRecommendationInput
 ): Promise<{ output: StrategicRecommendationOutput; event: DecisionEvent }> {
-  const startTime = Date.now();
+  const startTime = performance.now();
 
   // Step 1: Aggregate signals from multiple source layers
   const signalAggregation = await aggregateSignals(input.timeWindow, input.sourceLayers);
@@ -634,10 +634,12 @@ export async function analyze(
   }
 
   // Filter by minimum confidence
-  recommendations = recommendations.filter((rec) => rec.confidence >= input.minConfidence);
+  recommendations = recommendations.filter(
+    (rec) => rec.confidence >= (input.minConfidence ?? 0.5)
+  );
 
   // Limit to max recommendations
-  recommendations = recommendations.slice(0, input.maxRecommendations);
+  recommendations = recommendations.slice(0, input.maxRecommendations ?? 10);
 
   // Step 5: Calculate overall confidence
   const overallConfidence = calculateConfidence(recommendations);
@@ -652,7 +654,7 @@ export async function analyze(
     analysisMetadata: {
       timeWindow: input.timeWindow,
       layersAnalyzed: input.sourceLayers,
-      processingDuration: Date.now() - startTime,
+      processingDuration: Math.max(1, Math.ceil(performance.now() - startTime)),
     },
   };
 

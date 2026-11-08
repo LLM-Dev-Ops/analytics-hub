@@ -1,0 +1,12 @@
+{
+  "id": "analytics-auth-boundary-v1",
+  "baseline": "0021e2d7504db3046128bc2e6144983194f802fa",
+  "frozen_before_implementation": true,
+  "holdout": ["access-user-missing", "access-user-empty", "access-user-number", "access-email-missing", "access-roles-string", "access-permissions-null", "access-session-missing", "access-mfa-string", "access-mfa-missing", "access-org-empty", "access-exp-missing", "refresh-user-missing", "refresh-session-number", "refresh-exp-missing", "tenant-admin-missing-org", "tenant-owner-missing-org", "tenant-empty-resource-org", "tenant-admin-unscoped-other-owner", "http-mfa-string", "http-tenant-missing-org"],
+  "anchor": ["token-pair", "empty-role-permission-arrays", "refresh-projection", "reject-hs384", "same-tenant-owner", "same-tenant-admin", "super-admin-explicit-bypass", "viewer-cannot-read-other-owner", "http-mfa-boolean", "http-mfa-false-denied"],
+  "acceptance": "20/20 holdouts; all 10 anchors and original 189 assertion names retained; TypeScript build passes; no dependency graph, auth algorithm, Rust, database, cache or migration changes. Global Rust/security/CI requirements remain independent merge gates.",
+  "measurement": "Real jsonwebtoken HS256 signing/verification and exported RBAC functions; real Fastify listener and native fetch for HTTP cases. Synthetic loopback fixtures only; no authentication or persistence mocks, external services or production data.",
+  "compatibility": "Preserve empty role/permission arrays as authenticated but unprivileged; retain explicit super-admin tenant bypass, owner access to unscoped own resources, same-tenant admin access and refresh projection.",
+  "optimization_bounds": { "generations": 1, "children": 2, "concurrency": 1, "seed": 2026101914 },
+  "benchmark": "Five alternating-order trials of each holdout and anchor, retain every outcome and elapsed time. Reliability first; no speedup or cost claim required."
+}

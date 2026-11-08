@@ -10,7 +10,7 @@
  * - Boundary compliance (no state mutation, no action commits, no conclusions)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import {
   computeEcosystemAnalytics,
   computeAggregation,

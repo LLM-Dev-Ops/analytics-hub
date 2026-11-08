@@ -236,12 +236,12 @@ export const DataSourceSchema = z.nativeEnum(DataSource);
  * Input to the Strategic Recommendation Agent (enhanced)
  */
 export const StrategicRecommendationInputSchema = z.object({
-  request_id: z.string().uuid(),
+  request_id: z.string().uuid().optional(),
   timeWindow: TimeRangeSchema,
   time_range: z.object({
     start: z.string().datetime(),
     end: z.string().datetime(),
-  }),
+  }).optional(),
   sourceLayers: z.array(z.string()).min(1),
   data_sources: z.array(DataSourceSchema).optional(),
   focus_areas: z.array(z.enum(['cost', 'security', 'performance', 'governance', 'compliance', 'operations'])).optional(),
@@ -268,7 +268,7 @@ export const StrategicRecommendationInputSchema = z.object({
   }).optional(),
 });
 
-export type StrategicRecommendationInput = z.infer<typeof StrategicRecommendationInputSchema>;
+export type StrategicRecommendationInput = z.input<typeof StrategicRecommendationInputSchema>;
 
 /**
  * Output from the Strategic Recommendation Agent (enhanced)
