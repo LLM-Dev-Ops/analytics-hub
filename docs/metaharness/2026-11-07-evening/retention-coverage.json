@@ -1,0 +1,77 @@
+{
+  "retained": {
+    "before": 219,
+    "after": 236,
+    "missing": [],
+    "pending": 0,
+    "beforeNamesSha": "220b9eac0b5633c6e3781b7174d4da68204ac0265bbc0f6bde890c71241208e1",
+    "afterNamesSha": "369af1faeae32227eafd3dd0eb9ed95b9914eaf9a8a5da3fe334fd1717f467cf"
+  },
+  "coverage": {
+    "before": {
+      "lines": {
+        "total": 2895,
+        "covered": 497,
+        "skipped": 0,
+        "pct": 17.16
+      },
+      "statements": {
+        "total": 3011,
+        "covered": 513,
+        "skipped": 0,
+        "pct": 17.03
+      },
+      "functions": {
+        "total": 599,
+        "covered": 86,
+        "skipped": 0,
+        "pct": 14.35
+      },
+      "branches": {
+        "total": 1056,
+        "covered": 189,
+        "skipped": 0,
+        "pct": 17.89
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "after": {
+      "lines": {
+        "total": 2897,
+        "covered": 516,
+        "skipped": 0,
+        "pct": 17.81
+      },
+      "statements": {
+        "total": 3013,
+        "covered": 533,
+        "skipped": 0,
+        "pct": 17.69
+      },
+      "functions": {
+        "total": 599,
+        "covered": 90,
+        "skipped": 0,
+        "pct": 15.02
+      },
+      "branches": {
+        "total": 1059,
+        "covered": 205,
+        "skipped": 0,
+        "pct": 19.35
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 100
+      }
+    }
+  },
+  "rollbackVerified": true
+}

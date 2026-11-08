@@ -1,0 +1,43 @@
+{
+  "head": "8b6efa96baa151f823322254663c4abe3a5dab67",
+  "main": "88f4ffa94afd4a14ec94c9b4b3dc723badc7fac1",
+  "mergeable": true,
+  "merged": false,
+  "runs": [
+    {
+      "id": 42433048040,
+      "name": "CI - Build and Test",
+      "conclusion": null,
+      "status": "in_progress",
+      "url": "https://github.com/LLM-Dev-Ops/analytics-hub/actions/runs/42433048040"
+    },
+    {
+      "id": 42433048049,
+      "name": "CI/CD Pipeline",
+      "conclusion": null,
+      "status": "in_progress",
+      "url": "https://github.com/LLM-Dev-Ops/analytics-hub/actions/runs/42433048049"
+    },
+    {
+      "id": 42433048050,
+      "name": "Rust Tests and Quality Checks",
+      "conclusion": null,
+      "status": "in_progress",
+      "url": "https://github.com/LLM-Dev-Ops/analytics-hub/actions/runs/42433048050"
+    },
+    {
+      "id": 42433048092,
+      "name": "API Quality",
+      "conclusion": "success",
+      "status": "completed",
+      "url": "https://github.com/LLM-Dev-Ops/analytics-hub/actions/runs/42433048092"
+    }
+  ],
+  "firstCandidate": "060a58953ce352b9b1e13b2b6aa41f82a5df0df4",
+  "initialApiQuality": {
+    "id": 42432442014,
+    "conclusion": "failure",
+    "reason": "all220 tests passed; legacy evaluator hard-coded219 and rejected additive test"
+  },
+  "mergeSideEffects": "Main push publishes images and triggers deployment, forbidden in this request"
+}

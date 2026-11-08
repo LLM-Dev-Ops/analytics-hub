@@ -1,0 +1,470 @@
+{
+  "audit": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 9,
+      "moderate": 28,
+      "high": 22,
+      "critical": 4,
+      "total": 63
+    },
+    "dependencies": {
+      "prod": 397,
+      "dev": 367,
+      "optional": 3,
+      "peer": 10,
+      "peerOptional": 0,
+      "total": 769
+    }
+  },
+  "productionAudit": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 27,
+      "high": 13,
+      "critical": 3,
+      "total": 43
+    },
+    "dependencies": {
+      "prod": 397,
+      "dev": 367,
+      "optional": 3,
+      "peer": 10,
+      "peerOptional": 0,
+      "total": 769
+    }
+  },
+  "findings": {
+    "@babel/core": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@fastify/static": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@fastify/swagger-ui",
+        "version": "6.1.3",
+        "isSemVerMajor": true
+      }
+    },
+    "@fastify/swagger-ui": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@fastify/swagger-ui",
+        "version": "6.1.3",
+        "isSemVerMajor": true
+      }
+    },
+    "@grpc/grpc-js": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@jest/core": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@mapbox/node-pre-gyp": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/core": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/instrumentation-fastify",
+        "version": "0.56.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/exporter-trace-otlp-grpc": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/exporter-trace-otlp-http": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/exporter-trace-otlp-proto": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/exporter-zipkin": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/instrumentation-fastify": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@opentelemetry/instrumentation-fastify",
+        "version": "0.56.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/instrumentation-pg": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@opentelemetry/instrumentation-pg",
+        "version": "0.78.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/otlp-exporter-base": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/otlp-grpc-exporter-base": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/otlp-proto-exporter-base": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/otlp-transformer": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/propagator-b3": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/propagator-jaeger": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/resources": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/sdk-logs": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/sdk-metrics": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/sdk-node": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/sdk-node",
+        "version": "0.301.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@opentelemetry/sdk-trace-node": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@opentelemetry/sql-common": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@opentelemetry/instrumentation-pg",
+        "version": "0.78.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@protobufjs/utf8": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "@typescript-eslint/eslint-plugin": {
+      "severity": "high",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@typescript-eslint/eslint-plugin",
+        "version": "8.72.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@typescript-eslint/parser": {
+      "severity": "high",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "@typescript-eslint/parser",
+        "version": "8.72.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@typescript-eslint/type-utils": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@typescript-eslint/eslint-plugin",
+        "version": "8.72.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@typescript-eslint/typescript-estree": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@typescript-eslint/parser",
+        "version": "8.72.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@typescript-eslint/utils": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "ajv": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "baseline-browser-mapping": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "brace-expansion": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "browserslist": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "create-jest": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "jest",
+        "version": "25.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "deepmerge": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "jest",
+        "version": "25.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "diff": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "fast-copy": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "fast-uri": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "fastify": {
+      "severity": "high",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "fastify",
+        "version": "5.12.8",
+        "isSemVerMajor": true
+      }
+    },
+    "find-my-way": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "fastify",
+        "version": "5.12.8",
+        "isSemVerMajor": true
+      }
+    },
+    "flatted": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "handlebars": {
+      "severity": "critical",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "ip-address": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "jest": {
+      "severity": "low",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "jest",
+        "version": "25.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "jest-cli": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "jest",
+        "version": "25.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "jest-config": {
+      "severity": "low",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "jest",
+        "version": "25.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "js-yaml": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "jws": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "minimatch": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": {
+        "name": "@typescript-eslint/parser",
+        "version": "8.72.1",
+        "isSemVerMajor": true
+      }
+    },
+    "node-vault": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": true
+    },
+    "picomatch": {
+      "severity": "high",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "postman-request": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "protobufjs": {
+      "severity": "critical",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "proxy-addr": {
+      "severity": "critical",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "qs": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "tar": {
+      "severity": "critical",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "ts-jest": {
+      "severity": "low",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "ts-jest",
+        "version": "25.5.1",
+        "isSemVerMajor": true
+      }
+    },
+    "uuid": {
+      "severity": "moderate",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "uuid",
+        "version": "14.0.3",
+        "isSemVerMajor": true
+      }
+    },
+    "yaml": {
+      "severity": "moderate",
+      "isDirect": false,
+      "fixAvailable": true
+    },
+    "zod": {
+      "severity": "high",
+      "isDirect": true,
+      "fixAvailable": {
+        "name": "zod",
+        "version": "4.6.7",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "lint": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm.\n\n> @llm-dev-ops/llm-analytics-api@0.1.0 lint\n> eslint src --ext .ts\n\n\nOops! Something went wrong! :(\n\nESLint: 8.57.1\n\nESLint couldn't find a configuration file. To set up a configuration file for this project, please run:\n\n    npm init @eslint/config\n\nESLint looked for configuration files in /tmp/analytics-nov7eve/api/src/adapters and its ancestors. If it found none, it then looked in your home directory.\n\nIf you think you already have a configuration file or if you need more help, please stop by the ESLint Discord server: https://eslint.org/chat\n\n",
+  "format": "/strategic-recommendation/__tests__/ruvector-client.test.ts\n[warn] src/agents/strategic-recommendation/__tests__/telemetry.test.ts\n[warn] src/agents/strategic-recommendation/__tests__/types.test.ts\n[warn] src/agents/strategic-recommendation/agent.ts\n[warn] src/agents/strategic-recommendation/index.ts\n[warn] src/agents/strategic-recommendation/telemetry.integration.ts\n[warn] src/agents/strategic-recommendation/telemetry.ts\n[warn] src/agents/strategic-recommendation/types.ts\n[warn] src/agents/types.ts\n[warn] src/auth/__tests__/boundary.test.ts\n[warn] src/auth/__tests__/jwt.test.ts\n[warn] src/auth/api-keys.ts\n[warn] src/auth/audit.ts\n[warn] src/auth/jwt.ts\n[warn] src/auth/mfa.ts\n[warn] src/auth/middleware.ts\n[warn] src/auth/oauth.ts\n[warn] src/auth/rbac.ts\n[warn] src/cache.ts\n[warn] src/cli/__tests__/strategic-recommendation.test.ts\n[warn] src/cli/consensus-agent.ts\n[warn] src/cli/index.ts\n[warn] src/cli/main.ts\n[warn] src/cli/strategic-recommendation.ts\n[warn] src/compliance/gdpr.ts\n[warn] src/config.ts\n[warn] src/contracts/consensus-agent.ts\n[warn] src/contracts/decision-event.ts\n[warn] src/contracts/ecosystem-collaboration-agent.ts\n[warn] src/contracts/index.ts\n[warn] src/database.ts\n[warn] src/execution/execution-graph.ts\n[warn] src/execution/fastify-plugin.ts\n[warn] src/execution/index.ts\n[warn] src/execution/span-types.ts\n[warn] src/functions/handler.ts\n[warn] src/index.ts\n[warn] src/kafka.ts\n[warn] src/logger.ts\n[warn] src/metrics.ts\n[warn] src/routes/analytics.ts\n[warn] src/routes/consensus.ts\n[warn] src/routes/ecosystem-collaboration.ts\n[warn] src/routes/events.ts\n[warn] src/routes/index.ts\n[warn] src/routes/ingest.ts\n[warn] src/routes/metrics.ts\n[warn] src/routes/strategic-recommendations.ts\n[warn] src/secrets/vault.ts\n[warn] src/services/index.ts\n[warn] src/services/ruvector-client.ts\n[warn] src/services/telemetry-emitter.ts\n[warn] src/types/events.ts\n[warn] src/types/fastify.d.ts\n[warn] Code style issues found in 74 files. Run Prettier with --write to fix.\n",
+  "frontendInstall": "npm warn Unknown env config \"http-proxy\". This will stop working in the next major version of npm.\nnpm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@llm-dev-ops%2finfra - Not found\nnpm error 404\nnpm error 404  The requested resource '@llm-dev-ops/infra@^0.1.0' could not be found or you do not have permission to access it.\nnpm error 404\nnpm error 404 Note that you can also install from a\nnpm error 404 tarball, folder, http url, or git url.\nnpm error A complete log of this run can be found in: /root/.npm/_logs/2026-11-08T01_05_31_782Z-debug-0.log\n"
+}

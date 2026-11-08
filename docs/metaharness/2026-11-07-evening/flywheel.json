@@ -1,0 +1,1199 @@
+{
+  "parentHash": "0850fa9a2d29cc4b1a7027091e23486dd41622e9bc32203276f485bb4fd5ab80",
+  "candidateHash": "6421a7134a943e0e8f4ad6409581b8999c6050113667ec1703fc26d5376ea427",
+  "trials": [
+    {
+      "trial": 0,
+      "root": "/tmp/an7-base/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 0,
+      "root": "/tmp/an7-exact/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 1,
+      "root": "/tmp/an7-exact/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 1,
+      "root": "/tmp/an7-base/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 2,
+      "root": "/tmp/an7-base/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 2,
+      "root": "/tmp/an7-exact/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 3,
+      "root": "/tmp/an7-exact/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 3,
+      "root": "/tmp/an7-base/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 4,
+      "root": "/tmp/an7-base/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "trial": 4,
+      "root": "/tmp/an7-exact/api",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      }
+    }
+  ],
+  "measurements": [
+    {
+      "revision": "0850fa9a2d29cc4b1a7027091e23486dd41622e9bc32203276f485bb4fd5ab80",
+      "suite": "holdout",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      },
+      "score": {
+        "primary": 0,
+        "itemWins": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "noopRate": 0,
+        "costPerWin": 0,
+        "regressed": true
+      }
+    },
+    {
+      "revision": "0850fa9a2d29cc4b1a7027091e23486dd41622e9bc32203276f485bb4fd5ab80",
+      "suite": "anchor",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": false
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": false
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      },
+      "score": {
+        "primary": 1,
+        "itemWins": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "noopRate": 0,
+        "costPerWin": 0,
+        "regressed": true
+      }
+    },
+    {
+      "revision": "6421a7134a943e0e8f4ad6409581b8999c6050113667ec1703fc26d5376ea427",
+      "suite": "holdout",
+      "report": {
+        "holdout": [
+          {
+            "id": "invalid-owner-0",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-1",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-2",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-3",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-4",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-5",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-6",
+            "passed": true
+          },
+          {
+            "id": "invalid-owner-7",
+            "passed": true
+          }
+        ],
+        "anchors": [
+          {
+            "id": "same-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-same-tenant",
+            "passed": true
+          },
+          {
+            "id": "viewer-other-owner",
+            "passed": true
+          },
+          {
+            "id": "admin-cross-tenant",
+            "passed": true
+          },
+          {
+            "id": "missing-user-tenant",
+            "passed": true
+          },
+          {
+            "id": "unscoped-resource",
+            "passed": true
+          },
+          {
+            "id": "no-base-permission",
+            "passed": true
+          },
+          {
+            "id": "explicit-super-admin",
+            "passed": true
+          }
+        ]
+      },
+      "score": {
+        "primary": 1,
+        "itemWins": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "noopRate": 0,
+        "costPerWin": 0,
+        "regressed": true
+      }
+    }
+  ],
+  "promotions": 0,
+  "fingerprint": "c5942e7c9bf8f28fe7af47a6ec3887d11eeb3f8c8e8601cc6a7a54969ea0b981",
+  "replay": {
+    "pass": true,
+    "checks": {
+      "receipts": true,
+      "reachesRoot": true,
+      "contiguousParents": true,
+      "allPromoted": true,
+      "gateUnchanged": true,
+      "gateReExecutes": true,
+      "allCommitsReceipts": true,
+      "sealedFieldsAuthentic": true
+    },
+    "failures": [],
+    "chainSummary": "gen0(root)"
+  },
+  "replayBundle": {
+    "data_source": "LIVE_COMPILED_PRODUCTION_RBAC",
+    "root_id": "root",
+    "chain": [
+      {
+        "id": "root",
+        "generation": 0,
+        "parents": [],
+        "mutation": null,
+        "primaryDelta": 0,
+        "anchorScore": 1,
+        "verdict": "ROOT",
+        "failureReasons": [],
+        "receipt": {
+          "payload": {
+            "kind": "root",
+            "root": "root"
+          },
+          "signature": "dqB7hkVePCVfUT30iDSOJFM66jr+9+gaYockPjsbfA9zNqjTtET7Y3QIzLE2aamM0Wr4YimSy4PrSsRd8Fm4Bw==",
+          "publicKey": "MCowBQYDK2VwAyEAxh/rmRZCtHavygtGJBuWaWAMaRoS4RcPESsNMuXaV6A=",
+          "alg": "ed25519"
+        },
+        "createdAt": "gen-0"
+      }
+    ],
+    "all_commits": [
+      {
+        "id": "root__revision_gen1",
+        "generation": 1,
+        "parents": [
+          "root"
+        ],
+        "mutation": {
+          "target": "revision",
+          "summary": "Reject malformed scoped resource owners before same-tenant admin allowance",
+          "inverse": {
+            "path": "src/auth/rbac.ts",
+            "parentBytes": "/**\n * Role-Based Access Control (RBAC) System\n * Manages roles, permissions, and access control policies\n */\n\nimport { FastifyRequest } from 'fastify';\n\nexport enum Role {\n  SUPER_ADMIN = 'super_admin',\n  ADMIN = 'admin',\n  ANALYST = 'analyst',\n  DEVELOPER = 'developer',\n  VIEWER = 'viewer',\n  API_CLIENT = 'api_client',\n}\n\nexport enum Permission {\n  // Event permissions\n  EVENT_READ = 'event:read',\n  EVENT_WRITE = 'event:write',\n  EVENT_DELETE = 'event:delete',\n\n  // Metrics permissions\n  METRICS_READ = 'metrics:read',\n  METRICS_WRITE = 'metrics:write',\n  METRICS_DELETE = 'metrics:delete',\n\n  // Dashboard permissions\n  DASHBOARD_READ = 'dashboard:read',\n  DASHBOARD_WRITE = 'dashboard:write',\n  DASHBOARD_DELETE = 'dashboard:delete',\n\n  // User management\n  USER_READ = 'user:read',\n  USER_WRITE = 'user:write',\n  USER_DELETE = 'user:delete',\n\n  // Organization management\n  ORG_READ = 'org:read',\n  ORG_WRITE = 'org:write',\n  ORG_DELETE = 'org:delete',\n\n  // API key management\n  API_KEY_READ = 'api_key:read',\n  API_KEY_WRITE = 'api_key:write',\n  API_KEY_DELETE = 'api_key:delete',\n\n  // System administration\n  SYSTEM_CONFIG = 'system:config',\n  SYSTEM_AUDIT = 'system:audit',\n}\n\n/**\n * Role-Permission mapping\n */\nexport const RolePermissions: Record<Role, Permission[]> = {\n  [Role.SUPER_ADMIN]: [\n    // All permissions\n    ...Object.values(Permission),\n  ],\n\n  [Role.ADMIN]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.EVENT_DELETE,\n    Permission.METRICS_READ,\n    Permission.METRICS_WRITE,\n    Permission.DASHBOARD_READ,\n    Permission.DASHBOARD_WRITE,\n    Permission.DASHBOARD_DELETE,\n    Permission.USER_READ,\n    Permission.USER_WRITE,\n    Permission.ORG_READ,\n    Permission.ORG_WRITE,\n    Permission.API_KEY_READ,\n    Permission.API_KEY_WRITE,\n    Permission.SYSTEM_AUDIT,\n  ],\n\n  [Role.ANALYST]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n    Permission.METRICS_WRITE,\n    Permission.DASHBOARD_READ,\n    Permission.DASHBOARD_WRITE,\n  ],\n\n  [Role.DEVELOPER]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n    Permission.DASHBOARD_READ,\n    Permission.API_KEY_READ,\n    Permission.API_KEY_WRITE,\n  ],\n\n  [Role.VIEWER]: [\n    Permission.EVENT_READ,\n    Permission.METRICS_READ,\n    Permission.DASHBOARD_READ,\n  ],\n\n  [Role.API_CLIENT]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n  ],\n};\n\n/**\n * RBAC Manager\n */\nexport class RBACManager {\n  /**\n   * Check if role has permission\n   */\n  hasPermission(role: Role, permission: Permission): boolean {\n    const permissions = RolePermissions[role] || [];\n    return permissions.includes(permission);\n  }\n\n  /**\n   * Check if user has permission (supports multiple roles)\n   */\n  userHasPermission(roles: Role[], permission: Permission): boolean {\n    return roles.some((role) => this.hasPermission(role, permission));\n  }\n\n  /**\n   * Get all permissions for a role\n   */\n  getRolePermissions(role: Role): Permission[] {\n    return RolePermissions[role] || [];\n  }\n\n  /**\n   * Get all permissions for user (union of all role permissions)\n   */\n  getUserPermissions(roles: Role[]): Permission[] {\n    const permissions = new Set<Permission>();\n    roles.forEach((role) => {\n      const rolePerms = this.getRolePermissions(role);\n      rolePerms.forEach((perm) => permissions.add(perm));\n    });\n    return Array.from(permissions);\n  }\n\n  /**\n   * Check if user has any of the required permissions\n   */\n  hasAnyPermission(roles: Role[], permissions: Permission[]): boolean {\n    return permissions.some((perm) => this.userHasPermission(roles, perm));\n  }\n\n  /**\n   * Check if user has all required permissions\n   */\n  hasAllPermissions(roles: Role[], permissions: Permission[]): boolean {\n    return permissions.every((perm) => this.userHasPermission(roles, perm));\n  }\n\n  /**\n   * Validate resource access (attribute-based)\n   */\n  canAccessResource(\n    roles: Role[],\n    permission: Permission,\n    resource: { organizationId?: string; userId?: string },\n    user: { userId: string; organizationId?: string }\n  ): boolean {\n    // Check base permission\n    if (!this.userHasPermission(roles, permission)) {\n      return false;\n    }\n\n    // Super admin can access everything\n    if (roles.includes(Role.SUPER_ADMIN)) {\n      return true;\n    }\n\n    // Organization-level access control\n    if (resource.organizationId !== undefined) {\n      // A missing tenant claim must not turn a scoped resource into a global one.\n      if (typeof resource.organizationId !== 'string' ||\n          resource.organizationId.trim().length === 0 ||\n          resource.organizationId !== user.organizationId) {\n        return false;\n      }\n    }\n\n    // User-level access control\n    if (resource.userId) {\n      // Users can access their own resources\n      if (resource.userId === user.userId) {\n        return true;\n      }\n\n      // Admins can access all resources in their org\n      if (roles.includes(Role.ADMIN)) {\n        return Boolean(resource.organizationId &&\n          resource.organizationId === user.organizationId);\n      }\n\n      return false;\n    }\n\n    return true;\n  }\n}\n\nexport const rbacManager = new RBACManager();\n\n/**\n * Fastify request with authenticated user\n */\nexport interface AuthenticatedRequest extends FastifyRequest {\n  user: {\n    userId: string;\n    email: string;\n    roles: Role[];\n    permissions: Permission[];\n    organizationId?: string;\n    sessionId: string;\n    mfaVerified: boolean;\n  };\n}\n\n/**\n * Authorization middleware factory\n */\nexport function requirePermission(...permissions: Permission[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasPermission = rbacManager.hasAnyPermission(request.user.roles, permissions);\n\n    if (!hasPermission) {\n      throw new Error(\n        `Insufficient permissions. Required: ${permissions.join(' or ')}`\n      );\n    }\n  };\n}\n\n/**\n * Require all permissions\n */\nexport function requireAllPermissions(...permissions: Permission[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasAllPermissions = rbacManager.hasAllPermissions(\n      request.user.roles,\n      permissions\n    );\n\n    if (!hasAllPermissions) {\n      throw new Error(\n        `Insufficient permissions. Required: ${permissions.join(' and ')}`\n      );\n    }\n  };\n}\n\n/**\n * Require role\n */\nexport function requireRole(...roles: Role[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasRole = request.user.roles.some((role) => roles.includes(role));\n\n    if (!hasRole) {\n      throw new Error(`Insufficient role. Required: ${roles.join(' or ')}`);\n    }\n  };\n}\n",
+            "parentSha256": "0850fa9a2d29cc4b1a7027091e23486dd41622e9bc32203276f485bb4fd5ab80"
+          }
+        },
+        "primaryDelta": 1,
+        "anchorScore": null,
+        "verdict": "REJECTED",
+        "failureReasons": [
+          "safety_regressed"
+        ],
+        "receipt": {
+          "payload": {
+            "kind": "candidate",
+            "id": "root__revision_gen1",
+            "target": "revision",
+            "verdict": "REJECTED",
+            "primaryDelta": 1,
+            "baselineScore": {
+              "primary": 0,
+              "itemWins": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ],
+              "noopRate": 0,
+              "costPerWin": 0,
+              "regressed": true
+            },
+            "candidateScore": {
+              "primary": 1,
+              "itemWins": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "noopRate": 0,
+              "costPerWin": 0,
+              "regressed": true
+            },
+            "anchorScore": null,
+            "failureReasons": [
+              "safety_regressed"
+            ],
+            "parents": [
+              "root"
+            ],
+            "generation": 1
+          },
+          "signature": "STSUT9F5kOJ2MKon4F8U2aDT77I7FPhIRGBqyzGgsYKJVVe07qf2UxGD5bGBDzNETSZPqZkxRfrgV+hiPsqsDA==",
+          "publicKey": "MCowBQYDK2VwAyEAxh/rmRZCtHavygtGJBuWaWAMaRoS4RcPESsNMuXaV6A=",
+          "alg": "ed25519"
+        },
+        "createdAt": "gen-1",
+        "baselineScore": {
+          "primary": 0,
+          "itemWins": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "noopRate": 0,
+          "costPerWin": 0,
+          "regressed": true
+        },
+        "candidateScore": {
+          "primary": 1,
+          "itemWins": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "noopRate": 0,
+          "costPerWin": 0,
+          "regressed": true
+        }
+      }
+    ],
+    "lift_curve": [
+      {
+        "generation": 0,
+        "primary": 0,
+        "delta": 0,
+        "anchor": 1
+      }
+    ],
+    "gate_fingerprint": "c5942e7c9bf8f28fe7af47a6ec3887d11eeb3f8c8e8601cc6a7a54969ea0b981",
+    "verified_improvements": 0,
+    "anchor_surviving_improvements": 0,
+    "milestone_reached": false,
+    "created_at": "gen-1"
+  },
+  "inverse": {
+    "path": "src/auth/rbac.ts",
+    "parentBytes": "/**\n * Role-Based Access Control (RBAC) System\n * Manages roles, permissions, and access control policies\n */\n\nimport { FastifyRequest } from 'fastify';\n\nexport enum Role {\n  SUPER_ADMIN = 'super_admin',\n  ADMIN = 'admin',\n  ANALYST = 'analyst',\n  DEVELOPER = 'developer',\n  VIEWER = 'viewer',\n  API_CLIENT = 'api_client',\n}\n\nexport enum Permission {\n  // Event permissions\n  EVENT_READ = 'event:read',\n  EVENT_WRITE = 'event:write',\n  EVENT_DELETE = 'event:delete',\n\n  // Metrics permissions\n  METRICS_READ = 'metrics:read',\n  METRICS_WRITE = 'metrics:write',\n  METRICS_DELETE = 'metrics:delete',\n\n  // Dashboard permissions\n  DASHBOARD_READ = 'dashboard:read',\n  DASHBOARD_WRITE = 'dashboard:write',\n  DASHBOARD_DELETE = 'dashboard:delete',\n\n  // User management\n  USER_READ = 'user:read',\n  USER_WRITE = 'user:write',\n  USER_DELETE = 'user:delete',\n\n  // Organization management\n  ORG_READ = 'org:read',\n  ORG_WRITE = 'org:write',\n  ORG_DELETE = 'org:delete',\n\n  // API key management\n  API_KEY_READ = 'api_key:read',\n  API_KEY_WRITE = 'api_key:write',\n  API_KEY_DELETE = 'api_key:delete',\n\n  // System administration\n  SYSTEM_CONFIG = 'system:config',\n  SYSTEM_AUDIT = 'system:audit',\n}\n\n/**\n * Role-Permission mapping\n */\nexport const RolePermissions: Record<Role, Permission[]> = {\n  [Role.SUPER_ADMIN]: [\n    // All permissions\n    ...Object.values(Permission),\n  ],\n\n  [Role.ADMIN]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.EVENT_DELETE,\n    Permission.METRICS_READ,\n    Permission.METRICS_WRITE,\n    Permission.DASHBOARD_READ,\n    Permission.DASHBOARD_WRITE,\n    Permission.DASHBOARD_DELETE,\n    Permission.USER_READ,\n    Permission.USER_WRITE,\n    Permission.ORG_READ,\n    Permission.ORG_WRITE,\n    Permission.API_KEY_READ,\n    Permission.API_KEY_WRITE,\n    Permission.SYSTEM_AUDIT,\n  ],\n\n  [Role.ANALYST]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n    Permission.METRICS_WRITE,\n    Permission.DASHBOARD_READ,\n    Permission.DASHBOARD_WRITE,\n  ],\n\n  [Role.DEVELOPER]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n    Permission.DASHBOARD_READ,\n    Permission.API_KEY_READ,\n    Permission.API_KEY_WRITE,\n  ],\n\n  [Role.VIEWER]: [\n    Permission.EVENT_READ,\n    Permission.METRICS_READ,\n    Permission.DASHBOARD_READ,\n  ],\n\n  [Role.API_CLIENT]: [\n    Permission.EVENT_READ,\n    Permission.EVENT_WRITE,\n    Permission.METRICS_READ,\n  ],\n};\n\n/**\n * RBAC Manager\n */\nexport class RBACManager {\n  /**\n   * Check if role has permission\n   */\n  hasPermission(role: Role, permission: Permission): boolean {\n    const permissions = RolePermissions[role] || [];\n    return permissions.includes(permission);\n  }\n\n  /**\n   * Check if user has permission (supports multiple roles)\n   */\n  userHasPermission(roles: Role[], permission: Permission): boolean {\n    return roles.some((role) => this.hasPermission(role, permission));\n  }\n\n  /**\n   * Get all permissions for a role\n   */\n  getRolePermissions(role: Role): Permission[] {\n    return RolePermissions[role] || [];\n  }\n\n  /**\n   * Get all permissions for user (union of all role permissions)\n   */\n  getUserPermissions(roles: Role[]): Permission[] {\n    const permissions = new Set<Permission>();\n    roles.forEach((role) => {\n      const rolePerms = this.getRolePermissions(role);\n      rolePerms.forEach((perm) => permissions.add(perm));\n    });\n    return Array.from(permissions);\n  }\n\n  /**\n   * Check if user has any of the required permissions\n   */\n  hasAnyPermission(roles: Role[], permissions: Permission[]): boolean {\n    return permissions.some((perm) => this.userHasPermission(roles, perm));\n  }\n\n  /**\n   * Check if user has all required permissions\n   */\n  hasAllPermissions(roles: Role[], permissions: Permission[]): boolean {\n    return permissions.every((perm) => this.userHasPermission(roles, perm));\n  }\n\n  /**\n   * Validate resource access (attribute-based)\n   */\n  canAccessResource(\n    roles: Role[],\n    permission: Permission,\n    resource: { organizationId?: string; userId?: string },\n    user: { userId: string; organizationId?: string }\n  ): boolean {\n    // Check base permission\n    if (!this.userHasPermission(roles, permission)) {\n      return false;\n    }\n\n    // Super admin can access everything\n    if (roles.includes(Role.SUPER_ADMIN)) {\n      return true;\n    }\n\n    // Organization-level access control\n    if (resource.organizationId !== undefined) {\n      // A missing tenant claim must not turn a scoped resource into a global one.\n      if (typeof resource.organizationId !== 'string' ||\n          resource.organizationId.trim().length === 0 ||\n          resource.organizationId !== user.organizationId) {\n        return false;\n      }\n    }\n\n    // User-level access control\n    if (resource.userId) {\n      // Users can access their own resources\n      if (resource.userId === user.userId) {\n        return true;\n      }\n\n      // Admins can access all resources in their org\n      if (roles.includes(Role.ADMIN)) {\n        return Boolean(resource.organizationId &&\n          resource.organizationId === user.organizationId);\n      }\n\n      return false;\n    }\n\n    return true;\n  }\n}\n\nexport const rbacManager = new RBACManager();\n\n/**\n * Fastify request with authenticated user\n */\nexport interface AuthenticatedRequest extends FastifyRequest {\n  user: {\n    userId: string;\n    email: string;\n    roles: Role[];\n    permissions: Permission[];\n    organizationId?: string;\n    sessionId: string;\n    mfaVerified: boolean;\n  };\n}\n\n/**\n * Authorization middleware factory\n */\nexport function requirePermission(...permissions: Permission[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasPermission = rbacManager.hasAnyPermission(request.user.roles, permissions);\n\n    if (!hasPermission) {\n      throw new Error(\n        `Insufficient permissions. Required: ${permissions.join(' or ')}`\n      );\n    }\n  };\n}\n\n/**\n * Require all permissions\n */\nexport function requireAllPermissions(...permissions: Permission[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasAllPermissions = rbacManager.hasAllPermissions(\n      request.user.roles,\n      permissions\n    );\n\n    if (!hasAllPermissions) {\n      throw new Error(\n        `Insufficient permissions. Required: ${permissions.join(' and ')}`\n      );\n    }\n  };\n}\n\n/**\n * Require role\n */\nexport function requireRole(...roles: Role[]) {\n  return async (request: AuthenticatedRequest) => {\n    if (!request.user) {\n      throw new Error('Authentication required');\n    }\n\n    const hasRole = request.user.roles.some((role) => roles.includes(role));\n\n    if (!hasRole) {\n      throw new Error(`Insufficient role. Required: ${roles.join(' or ')}`);\n    }\n  };\n}\n",
+    "parentSha256": "0850fa9a2d29cc4b1a7027091e23486dd41622e9bc32203276f485bb4fd5ab80"
+  },
+  "contract": {
+    "baseline": "4b4e48f056ef7f886573063e56f57e8b3db7d166",
+    "acceptance": "Deny8 malformed resource-owner values while retaining8 owner/tenant/role compatibility anchors, all existing assertions and full repository gates",
+    "trials": 5,
+    "darwin_generations": 1,
+    "darwin_children": 1,
+    "scope": "Native compiled production RBACManager calls; not every production route's auth-hook registration or persistence proof",
+    "no_merge_if": "Rust/security/CI/approvals incomplete or merge causes unauthorized publication/deployment"
+  },
+  "probeSha256": "29479645e47b2c64b44801e1e669277b429e02dcecbb510ec48c7b2de21bf3bd",
+  "boundary": "regressed=true is the fail-closed full-repository veto, not a newly measured component regression. Zero cost/noop neutral and unmeasured. Root-only replay is not candidate promotion proof. Source rollback never erases append-only memory."
+}
